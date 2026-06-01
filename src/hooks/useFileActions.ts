@@ -3,7 +3,8 @@ import { toast } from "sonner";
 import { Row } from "../types";
 
 export function useFileActions(
-  data: Row | null, 
+  data: Row | null,
+  open: boolean,
   onAction?: (path: string, action: string) => void,
   onFileMoved?: (oldPath: string, newPath: string) => void
 ) {
@@ -93,6 +94,16 @@ export function useFileActions(
     const problems: string[] = [];
     if (data?.tags?.includes('sem_filho')) problems.push('sem_filho');
     if ((data?.meta?.es08Matches || []).length > 0) problems.push('es08');
+    if (data?.tags?.includes('coringa')) problems.push('coringa');
+    if (data?.tags?.includes('sem_codigo') || (data?.meta?.referenciaEmpty || []).length > 0) problems.push('sem_codigo');
+
+    // Check if there are other errors in data.errors (e.g., machine generation)
+    const knownErrorDescriptions = ["ITEM SEM CÓDIGO", "ITEM DUPLADO 37MM", "CADASTRO DE COR CORINGA", "PENDENTE: TROCA DE SIGLAS (LOTE)", "Sem Item Filho"];
+    const otherErrors = (data?.errors || []).filter(e => !knownErrorDescriptions.includes(e));
+    if (otherErrors.length > 0) {
+      problems.push('other_errors');
+    }
+
     return problems;
   }, [data]);
 
@@ -108,6 +119,7 @@ export function useFileActions(
       'CHAPAS': 'CHAPA_',
       'FITAS': 'FITA_',
       'TAPAFURO': 'TAPAFURO_',
+      'CAPA': 'CAPA_',
       'PAINEL': 'PAINEL_'
     };
 
@@ -119,29 +131,66 @@ export function useFileActions(
 
   // Effects
   useEffect(() => {
-    if (filteredCoringaMatches.length > 0 && !coringaFrom) {
+    const currentStillExists = filteredCoringaMatches.includes(coringaFrom || '');
+    if (filteredCoringaMatches.length > 0 && (!coringaFrom || !currentStillExists)) {
       setCoringaFrom(filteredCoringaMatches[0]);
     }
   }, [filteredCoringaMatches, coringaFrom]);
 
-  useEffect(() => {
-    // Reset accordion states when switching files
-    setPendingRefOpen(false);
-    setErpSearchOpen(false);
-    setCoringaOpen(false);
-    setOrderInfoOpen(false);
-    setSpecialItemsOpen(false);
-    setMuxarabiOpen(false);
-    setEs08Open(false);
-    setSemFilhoOpen(false);
+  const lastFilenameRef = useRef<string | null>(null);
+  const lastOpenRef = useRef<boolean>(false);
 
-    // Reset search fields and results
-    setErpSearchCode('');
-    setErpSearchDesc('');
-    setErpSearchType('');
-    setErpSearchResults([]);
-    setSelectedRefSingle(null);
-    setRefFillValue('');
+  useEffect(() => {
+    const fileChanged = data?.filename !== lastFilenameRef.current;
+    const justOpened = open && !lastOpenRef.current;
+
+    if (fileChanged || justOpened) {
+      // Reset accordion states when switching files or reopening drawer
+      setPendingRefOpen(false);
+      setErpSearchOpen(false);
+      setCoringaOpen(false);
+      setOrderInfoOpen(false);
+      setSpecialItemsOpen(false);
+      setMuxarabiOpen(false);
+      setEs08Open(false);
+      setSemFilhoOpen(false);
+
+      // Reset search fields and results
+      setErpSearchCode('');
+      setErpSearchDesc('');
+      setErpSearchType('');
+      setErpSearchResults([]);
+      setSelectedRefSingle(null);
+      setRefFillValue('');
+
+      // Reset resolved problems
+      setResolvedProblems(new Set());
+
+      // Reset Coringa States
+      setCoringaFrom(null);
+      setCoringaTo("");
+      setIndCoringaAcronym("");
+      setIndCoringaOptions([]);
+      setCoringa1Acronym("");
+      setCoringa1Options([]);
+      setCoringa1Selected("");
+      setCoringa1Done(false);
+      setCoringa2Acronym("");
+      setCoringa2Options([]);
+      setCoringa2Selected("");
+      setCoringa2Done(false);
+      setCg1Acronym("");
+      setCg1Options([]);
+      setCg1Replace("");
+      setCg1Done(false);
+      setCg2Acronym("");
+      setCg2Options([]);
+      setCg2Replace("");
+      setCg2Done(false);
+
+      // Reset DXF search results for the new file context
+      setDxfResults({});
+    }
 
     if (!data) {
       setDxfResults({});
@@ -151,10 +200,14 @@ export function useFileActions(
       setCoringa2Done(false);
       setCg1Done(false);
       setCg2Done(false);
+    } else {
+      // Clear lastReplace when data refreshes to unlock UI for next action
+      setLastReplace(null);
     }
-    // Reset resolved problems when data changes
-    setResolvedProblems(new Set());
-  }, [data]);
+
+    lastFilenameRef.current = data?.filename || null;
+    lastOpenRef.current = open;
+  }, [data, open]);
 
   // Actions
   const handleErpSearch = useCallback(async () => {
@@ -180,10 +233,10 @@ export function useFileActions(
     if (!acronym) return;
     const setSearching = [null, setCoringa1Searching, setCoringa2Searching, setIndCoringaSearching, setCg1Searching, setCg2Searching][group];
     const setOptions = [null, setCoringa1Options, setCoringa2Options, setIndCoringaOptions, setCg1Options, setCg2Options][group];
-    
+
     if (setSearching) setSearching(true);
     try {
-      const res = await (window as any).electron?.analyzer?.searchErpProduct?.({ desc: acronym });
+      const res = await (window as any).electron?.analyzer?.searchErpProduct?.({ desc: acronym, type: 'CORINGA' });
       const results = res?.results || [];
       if (setOptions) setOptions(results);
       if (!results.length) toast.info("Nenhuma cor encontrada.");
@@ -230,7 +283,7 @@ export function useFileActions(
   const fixFresa37to18 = useCallback(async (drawing: string) => {
     const dxfInfo = dxfResults[drawing];
     if (!data || !dxfInfo?.data?.path) return;
-    
+
     setDxfFixing(prev => ({ ...prev, [drawing]: true }));
     const id = toast.loading(`Corrigindo ${drawing}...`);
     try {
@@ -308,6 +361,9 @@ export function useFileActions(
         toast.success(`Substituídos ${res.replaced || 0} ocorrência(s)`);
         if (onAction) onAction(data.fullpath, `[Manual] Coringa: substituído "${coringaFrom}" por "${replacementValue}" (${coringaTo})`);
         setLastReplace({ backupPath: res.backupPath, from: coringaFrom, to: coringaTo, replaced: res.replaced });
+        setCoringaTo("");
+        setIndCoringaAcronym("");
+        setIndCoringaOptions([]);
       } else {
         toast.error(`Falha: ${res?.message || 'nenhuma ocorrência encontrada'}`);
       }
@@ -465,16 +521,23 @@ export function useFileActions(
     // After adding this key, check how many remain
     const remainingAfter = unresolvedRef.current.filter(p => p !== problemKey);
 
-    if (remainingAfter.length === 0) {
-      // This was the last problem — move the file
-      await handleMoveToOk();
-    } else {
+    if (remainingAfter.length > 0) {
       toast.success(
         `Problema resolvido! Ainda resta(m) ${remainingAfter.length} problema(s) pendente(s).`,
         { icon: '✅' }
       );
     }
-  }, [handleMoveToOk]);
+  }, []);
+
+  // Automatically move to OK if all active problems are resolved and the file is still in the error folder
+  useEffect(() => {
+    if (open && data && activeProblems.length > 0 && unresolvedProblems.length === 0) {
+      const isInErroFolder = data.fullpath.toLowerCase().includes('\\erro\\') || data.fullpath.toLowerCase().includes('/erro/');
+      if (isInErroFolder) {
+        handleMoveToOk();
+      }
+    }
+  }, [unresolvedProblems, open, data, activeProblems.length, handleMoveToOk]);
 
   const handleReprocess = useCallback(async () => {
     if (!data) return;

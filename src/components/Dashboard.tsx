@@ -208,7 +208,13 @@ export default function Dashboard() {
         });
 
         // if the detail drawer currently shows this file, refresh its data so the UI (coringa select) updates
-        setDetailData((prev) => (prev && prev.fullpath === row.fullpath ? row : prev));
+        setDetailData((prev) => {
+          if (!prev) return null;
+          if (prev.fullpath === row.fullpath || prev.filename === row.filename) {
+            return row;
+          }
+          return prev;
+        });
 
         notifyFromPayload(payload);
         return;
@@ -407,7 +413,7 @@ export default function Dashboard() {
       const timePrefix = new Date().toLocaleTimeString('pt-BR');
       row.history = [...(row.history || []), `[${timePrefix}] ${action}`];
       copy[idx] = row;
-      setDetailData(prevData => (prevData && prevData.fullpath === fullpath ? row : prevData));
+      setDetailData(prevData => (prevData && (prevData.fullpath === fullpath || prevData.filename === row.filename) ? row : prevData));
       return copy;
     });
   }, []);
@@ -433,7 +439,7 @@ export default function Dashboard() {
         copy[idx] = updatedRow;
 
         // Atualizar também o estado do modal se ele estiver aberto para este arquivo
-        setDetailData(prevDetail => (prevDetail && prevDetail.fullpath === oldPath ? updatedRow : prevDetail));
+        setDetailData(prevDetail => (prevDetail && (prevDetail.fullpath === oldPath || prevDetail.filename === updatedRow.filename) ? updatedRow : prevDetail));
       }
       return copy;
     });
@@ -694,16 +700,6 @@ export default function Dashboard() {
               </div>
 
               <div className="flex items-center gap-3">
-                <label className="text-xs text-muted-foreground flex items-center gap-2 cursor-pointer select-none border border-border rounded-md px-3 h-9 bg-card">
-                  <input
-                    type="checkbox"
-                    checked={true}
-                    readOnly
-                    className="accent-[#27AE60] h-3.5 w-3.5"
-                  />
-                  <span>Auto-fix Ativo</span>
-                </label>
-
                 {!monitoring ? (
                   <Button onClick={start} className="gap-2 bg-[#27AE60] hover:bg-[#27AE60]/90 h-9 px-4 text-xs font-semibold">
                     <Play className="h-3.5 w-3.5" /> Iniciar Monitoramento

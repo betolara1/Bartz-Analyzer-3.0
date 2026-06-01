@@ -20,13 +20,7 @@ export function InfoSection({ data, onReprocess, onOpenFolder }: InfoSectionProp
       
       <div className="space-y-1 bg-muted/30 p-3 rounded-xl border border-border hover:border-primary/50 transition-colors">
         <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Ações Rápidas</div>
-        <div className="flex gap-2">
-          <button 
-            onClick={onReprocess}
-            className="flex-1 bg-muted hover:bg-muted/80 text-foreground text-[10px] font-bold uppercase tracking-widest py-1.5 rounded-lg border border-border flex items-center justify-center gap-1.5 transition-all"
-          >
-            <RotateCcw className="h-3 w-3" /> Reavaliar
-          </button>
+        <div className="flex gap-2">  
           <button 
             onClick={onOpenFolder}
             className="flex-1 bg-muted hover:bg-muted/80 text-foreground text-[10px] font-bold uppercase tracking-widest py-1.5 rounded-lg border border-border flex items-center justify-center gap-1.5 transition-all"
@@ -35,13 +29,13 @@ export function InfoSection({ data, onReprocess, onOpenFolder }: InfoSectionProp
           </button>
         </div>
       </div>
-
+{/* 
       <div className="sm:col-span-2 space-y-1 bg-muted/30 p-3 rounded-xl border border-border hover:border-primary/50 transition-colors overflow-hidden">
         <div className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Caminho do Arquivo</div>
         <div className="text-[10px] font-mono text-muted-foreground break-all select-all leading-relaxed bg-background p-2 rounded-lg border border-border">
           {data?.fullpath || "Caminho não disponível"}
         </div>
-      </div>
+      </div> */}
     </div>
   );
 }

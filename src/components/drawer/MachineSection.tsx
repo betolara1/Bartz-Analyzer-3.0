@@ -10,10 +10,8 @@ export function MachineSection({ data }: MachineSectionProps) {
   const machines = data?.meta?.machines || [];
 
   const PLUGIN_NAMES: Record<string, string> = { 
-    "2341": "Cyflex 900", 
     "2530": "Aspan", 
-    "2534": "NCB612", 
-    "2525": "MSZ600" 
+    "2534": "NCB612" 
   };
 
   return (
@@ -23,8 +21,8 @@ export function MachineSection({ data }: MachineSectionProps) {
         <h4 className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Maquinário / Plugins (GerADOS)</h4>
       </div>
       
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-        {["2530", "2534", "2341", "2525"].map(id => {
+      <div className="grid grid-cols-2 gap-2">
+        {["2530", "2534"].map(id => {
           const m = machines.find(m => m.id === id);
           const name = PLUGIN_NAMES[id] || "—";
           return (

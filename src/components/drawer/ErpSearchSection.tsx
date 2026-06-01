@@ -93,6 +93,7 @@ export function ErpSearchSection({
                 <option value="CHAPAS">CHAPAS</option>
                 <option value="FITAS">FITAS</option>
                 <option value="TAPAFURO">TAPAFURO</option>
+                <option value="CAPA">CAPA</option>
                 <option value="PAINEL">PAINEL</option>
               </select>
             </div>

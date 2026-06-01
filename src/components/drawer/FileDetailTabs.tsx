@@ -49,16 +49,22 @@ export function FileDetailTabs({ data, actions, activeTab, onTabChange }: FileDe
   const hasRefError = (data?.errors ?? []).some(er => String(er).toUpperCase().includes("ITEM SEM CÓDIGO"));
   const hasCoringaMatches = (data?.meta?.coringaMatches?.length || 0) > 0;
   const hasReferenciaEmpty = (data?.meta?.referenciaEmpty?.length || 0) > 0;
-  
-  const hasActions = hasCoringaMatches || 
-                    hasRefError || 
-                    actions.filteredCoringaMatches.length > 0 || 
-                    hasCG1 || hasCG2 || hasCoringa1 || hasCoringa2 ||
-                    hasReferenciaEmpty;
+
+  const hasActions = hasCoringaMatches ||
+    hasRefError ||
+    actions.filteredCoringaMatches.length > 0 ||
+    hasCG1 || hasCG2 || hasCoringa1 || hasCoringa2 ||
+    hasReferenciaEmpty;
+
+  const hasSemFilho = !!data?.tags?.includes('sem_filho');
+  const hasEs08 = (data?.meta?.es08Matches || []).length > 0;
+  const hasSpecialItems = (data?.meta?.specialItems || []).length > 0;
+  const hasMuxarabi = (data?.meta?.muxarabiItems || []).length > 0;
+  const hasComponents = hasSemFilho || hasEs08 || hasSpecialItems || hasMuxarabi;
 
   const tabs: TabDef[] = [
     { key: "overview", label: "Visão Geral", icon: <Eye className="h-3.5 w-3.5" /> },
-    { key: "components", label: "Componentes", icon: <Boxes className="h-3.5 w-3.5" /> },
+    ...(hasComponents ? [{ key: "components", label: "Componentes", icon: <Boxes className="h-3.5 w-3.5" /> } as TabDef] : []),
     ...(hasActions ? [{ key: "actions", label: "Ações Manuais", icon: <Wrench className="h-3.5 w-3.5" /> } as TabDef] : []),
   ];
 
@@ -68,6 +74,13 @@ export function FileDetailTabs({ data, actions, activeTab, onTabChange }: FileDe
       onTabChange("overview");
     }
   }, [hasActions, activeTab, onTabChange]);
+
+  // If components tab is active but no longer available, switch to overview
+  React.useEffect(() => {
+    if (activeTab === "components" && !hasComponents) {
+      onTabChange("overview");
+    }
+  }, [hasComponents, activeTab, onTabChange]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -127,7 +140,7 @@ function OverviewTab({ data, actions }: { data: Row | null; actions: ReturnType<
         onReprocess={actions.handleReprocess}
         onOpenFolder={actions.handleOpenFolder}
       />
-      
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* Coluna da Esquerda */}
         <div className="space-y-6">
@@ -188,11 +201,13 @@ function ComponentsTab({ data, actions }: { data: Row | null; actions: ReturnTyp
           onResolve={() => actions.resolveAndMaybeMove('es08')}
         />
       </div>
-      <SpecialItemsSection
-        isOpen={actions.specialItemsOpen}
-        onToggle={() => actions.setSpecialItemsOpen(!actions.specialItemsOpen)}
-        data={data}
-      />
+      <div className="lg:col-span-2">
+        <SpecialItemsSection
+          isOpen={actions.specialItemsOpen}
+          onToggle={() => actions.setSpecialItemsOpen(!actions.specialItemsOpen)}
+          data={data}
+        />
+      </div>
       <MuxarabiSection
         isOpen={actions.muxarabiOpen}
         onToggle={() => actions.setMuxarabiOpen(!actions.muxarabiOpen)}

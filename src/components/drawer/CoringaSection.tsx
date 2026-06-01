@@ -20,7 +20,7 @@ interface CoringaSectionProps {
   isReplacing: boolean;
   lastReplace: any;
   filteredCoringaMatches: string[];
-  
+
   // CG/Batch logic
   coringa1Acronym: string;
   setCoringa1Acronym: (v: string) => void;
@@ -74,7 +74,7 @@ export function CoringaSection({
   const hasCG2 = !!data?.meta?.cg2_detected;
   const hasCoringa1 = !!data?.meta?.coringa1_detected;
   const hasCoringa2 = !!data?.meta?.coringa2_detected;
-  
+
   const rawCoringaMatches = (data?.meta?.coringaMatches || []) as string[];
   const hasIndividualCoringas = rawCoringaMatches.length > 0;
   const showSection = hasIndividualCoringas || hasCG1 || hasCG2 || hasCoringa1 || hasCoringa2;
@@ -120,7 +120,6 @@ export function CoringaSection({
                     <label className="text-[9px] text-muted-foreground uppercase font-bold tracking-widest pl-1">Sigla Encontrada</label>
                     <select
                       value={coringaFrom ?? ""}
-                      disabled={!!lastReplace}
                       onChange={(e) => setCoringaFrom(e.target.value)}
                       className="w-full bg-background border border-border text-foreground px-3 py-2 rounded-lg text-sm focus:border-amber-500 outline-none disabled:opacity-50 transition-all font-bold"
                     >
@@ -136,14 +135,13 @@ export function CoringaSection({
                       <input
                         placeholder="Ex: 10.01.0000"
                         value={indCoringaAcronym}
-                        disabled={!!lastReplace}
                         onChange={(e) => setIndCoringaAcronym(e.target.value.toUpperCase())}
                         onKeyDown={(e) => { if (e.key === 'Enter') onCoringaSearch(indCoringaAcronym, 3); }}
                         className="w-full bg-background border border-border text-foreground px-3 py-2 pr-8 rounded-lg text-sm focus:border-amber-500 outline-none disabled:opacity-50 transition-all font-mono"
                       />
                       <button
                         onClick={() => onCoringaSearch(indCoringaAcronym, 3)}
-                        disabled={!indCoringaAcronym || indCoringaSearching || !!lastReplace}
+                        disabled={!indCoringaAcronym || indCoringaSearching}
                         className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-amber-500 disabled:opacity-50"
                       >
                         <Search className="h-4 w-4" />
@@ -160,12 +158,11 @@ export function CoringaSection({
                             else if (coringaFrom?.includes('CG2') && hasCG2) setCg2Replace(val);
                           }
                         }}
-                        disabled={!!lastReplace}
                         className="w-full bg-background border border-border text-foreground px-3 py-2 mt-2 rounded-lg text-sm focus:border-amber-500 outline-none transition-all font-mono"
                       >
                         <option value="">Selecione...</option>
                         {indCoringaOptions.map((opt, i) => (
-                          <option key={i} value={opt.code}>{opt.description} ({opt.code})</option>
+                          <option key={i} value={opt.code}>{opt.description}</option>
                         ))}
                       </select>
                     )}
@@ -173,7 +170,7 @@ export function CoringaSection({
                 </div>
 
                 <button
-                  disabled={!coringaFrom || !coringaTo || isReplacing || !!lastReplace}
+                  disabled={!coringaFrom || !coringaTo || isReplacing}
                   onClick={onApplyCoringa}
                   className="w-full px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-sm disabled:opacity-50 transition-all shadow-lg shadow-amber-900/20 flex items-center justify-center gap-2 active:scale-[0.98]"
                 >
@@ -240,7 +237,7 @@ export function CoringaSection({
                           >
                             <option value="">Selecione a cor...</option>
                             {coringa1Options.map((opt, i) => (
-                              <option key={i} value={opt.code}>{opt.description} ({opt.code})</option>
+                              <option key={i} value={opt.code}>{opt.description}</option>
                             ))}
                           </select>
                         </div>
@@ -294,7 +291,7 @@ export function CoringaSection({
                               >
                                 <option value="">Selecione...</option>
                                 {cg1Options.map((opt, i) => (
-                                  <option key={i} value={opt.code}>{opt.description} ({opt.code})</option>
+                                  <option key={i} value={opt.code}>{opt.description}</option>
                                 ))}
                               </select>
                             </div>
@@ -347,7 +344,7 @@ export function CoringaSection({
                           >
                             <option value="">Selecione...</option>
                             {coringa2Options.map((opt, i) => (
-                              <option key={i} value={opt.code}>{opt.description} ({opt.code})</option>
+                              <option key={i} value={opt.code}>{opt.description}</option>
                             ))}
                           </select>
                         </div>
@@ -375,7 +372,7 @@ export function CoringaSection({
                               <select value={cg2Replace} onChange={(e) => setCg2Replace(e.target.value)} disabled={cg2Options.length === 0 || cg2Done || hasIndividualCoringas} className="flex-1 min-w-[120px] bg-background border border-border text-foreground px-2 py-1.5 rounded-lg text-[11px] font-mono disabled:opacity-50">
                                 <option value="">Selecione...</option>
                                 {cg2Options.map((opt, i) => (
-                                  <option key={i} value={opt.code}>{opt.description} ({opt.code})</option>
+                                  <option key={i} value={opt.code}>{opt.description}</option>
                                 ))}
                               </select>
                             </div>

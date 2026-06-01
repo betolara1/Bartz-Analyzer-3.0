@@ -30,7 +30,7 @@ interface FileDetailDrawerProps {
 }
 
 function FileDetailDrawer({ open, onOpenChange, data, onAction, onFileMoved }: FileDetailDrawerProps) {
-  const actions = useFileActions(data, onAction, onFileMoved);
+  const actions = useFileActions(data, open, onAction, onFileMoved);
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
   const [isMaximized, setIsMaximized] = useState(false);
 

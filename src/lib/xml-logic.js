@@ -137,6 +137,7 @@ function validateXmlContent(txt, cfg = {}) {
             const baseMatch = itemTag.match(/\bITEM_BASE\s*=\s*"(ES0[^"]*)"/i);
             if (baseMatch) {
                 const itemBase = baseMatch[1].toUpperCase();
+                const idMatch = itemTag.match(/\bID\s*=\s*"([^"]*)"/i);
                 const desenhoMatch = itemTag.match(/\bDESENHO\s*=\s*"([^"]*)"/i);
                 const descMatch = itemTag.match(/\bDESCRICAO\s*=\s*"([^"]*)"/i);
                 const largMatch = itemTag.match(/\bLARGURA\s*=\s*"([^"]*)"/i);
@@ -148,6 +149,7 @@ function validateXmlContent(txt, cfg = {}) {
                 const p = profMatch ? Math.round(parseFloat(profMatch[1])) : "0";
 
                 specialItems.push({
+                    id: idMatch ? idMatch[1] : "",
                     itemBase,
                     desenho: desenhoMatch ? desenhoMatch[1] : "",
                     descricao: descMatch ? descMatch[1] : "",
@@ -158,7 +160,18 @@ function validateXmlContent(txt, cfg = {}) {
         const spMap = new Map();
         for (const s of specialItems) {
             const key = `${s.itemBase}|${s.desenho}|${s.descricao}|${s.dimensao}`;
-            if (!spMap.has(key)) spMap.set(key, s);
+            if (!spMap.has(key)) {
+                spMap.set(key, {
+                    id: s.id,
+                    itemBase: s.itemBase,
+                    desenho: s.desenho,
+                    descricao: s.descricao,
+                    dimensao: s.dimensao,
+                    ids: [s.id]
+                });
+            } else {
+                spMap.get(key).ids.push(s.id);
+            }
         }
         payload.meta.specialItems = Array.from(spMap.values());
     } catch (e) { }
@@ -195,7 +208,7 @@ function validateXmlContent(txt, cfg = {}) {
             payload.meta.muxarabiItems = Array.from(mxMap.values());
         }
         if (/\bMX008001\b/i.test(txt) || /\bMX008002\b/i.test(txt)) {
-            payload.warnings.push("MUXARABI NO PED");
+            payload.warnings.push("MUXARABI");
             payload.tags.push("muxarabi");
         }
     } catch (e) { }
@@ -263,18 +276,20 @@ function validateXmlContent(txt, cfg = {}) {
     for (const m of txt.matchAll(/<MAQUINA\b([^>]*\bID_PLUGIN\s*=\s*"([^"]+)"[^>]*\bNOME_PLUGIN\s*=\s*"([^"]+)")/gi)) {
         const id = (m[2] || "").trim();
         const name = (m[3] || "").trim();
-        if (id) machines.push({ id, name });
+        if (id === "2530" || id === "2534") {
+            machines.push({ id, name });
+        }
     }
     payload.meta.machines = machines;
 
     if (!isFerragensOnly) {
-        const REQUIRED_PLUGINS = ["2530", "2534", "2341", "2525"];
+        const REQUIRED_PLUGINS = ["2530", "2534"];
         const seen = new Set(machines.map(m => m.id));
         if (!REQUIRED_PLUGINS.every(id => seen.has(id))) {
             payload.erros.push({ descricao: "PROBLEMA NA GERAÇÃO DE MÁQUINAS" });
         }
-        const PLUGIN_NAMES = { "2341": "Cyflex 900", "2530": "Aspan", "2534": "NCB612", "2525": "MSZ600" };
-        payload.meta.machines = Array.from(seen).map(id => ({ id, name: PLUGIN_NAMES[id] || undefined }));
+        const PLUGIN_NAMES = { "2530": "Aspan", "2534": "NCB612" };
+        payload.meta.machines = Array.from(seen).map(id => ({ id, name: PLUGIN_NAMES[id] }));
     }
 
     // AUTO-FIX

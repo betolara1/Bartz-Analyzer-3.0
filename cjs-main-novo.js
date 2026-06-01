@@ -19,12 +19,6 @@ const CFG_FILE = path.join(app.getPath("userData"), "settings.json");
 function isUNC(p) { return typeof p === "string" && p.startsWith("\\\\"); }
 function normalizeWin(p) { if (!p) return ""; return isUNC(p) ? p.replace(/\//g, "\\") : path.normalize(p); }
 
-// Remove diacritics/accents from a string for robust matching
-function removeAccents(str) {
-  if (typeof str !== 'string') return '';
-  return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
-
 async function loadCfg() { try { return JSON.parse(await fsp.readFile(CFG_FILE, "utf8")); } catch { return {}; } }
 // saveCfg unificado será definido abaixo
 
@@ -161,6 +155,9 @@ ipcMain.handle("settings:load", async () => {
     logsProcessed: normalizeWin(saved.logsProcessed || ""),
     drawings: normalizeWin(saved.drawings || ""),
     enableAutoFix: !!saved.enableAutoFix,
+    apiToken: saved.apiToken || "",
+    apiUsername: saved.apiUsername || "admin",
+    apiPassword: saved.apiPassword || "senhaapibartz",
   };
 });
 
@@ -175,6 +172,9 @@ function sanitizeCfg(obj) {
     logsProcessed: normalizeWin(obj?.logsProcessed || ""),
     drawings: normalizeWin(obj?.drawings || ""),
     enableAutoFix: !!obj?.enableAutoFix,
+    apiToken: obj?.apiToken || "",
+    apiUsername: obj?.apiUsername || "admin",
+    apiPassword: obj?.apiPassword || "senhaapibartz",
   };
 }
 
@@ -234,6 +234,9 @@ ipcMain.handle("analyzer:start", async (_e, overrideCfg) => {
       logsErrors: normalizeWin(raw.logsErrors),
       logsProcessed: normalizeWin(raw.logsProcessed),
       enableAutoFix: !!raw.enableAutoFix,
+      apiToken: raw.apiToken || "",
+      apiUsername: raw.apiUsername || "admin",
+      apiPassword: raw.apiPassword || "senhaapibartz",
     };
 
     for (const k of ["entrada", "exportacao", "ok", "erro"]) {
@@ -712,185 +715,6 @@ ipcMain.handle('analyzer:fillReferenciaByIds', async (_e, obj) => {
   }
 });
 
-/** --- replace DESCRICAO attribute for specific ITEM IDs --- **/
-ipcMain.handle('analyzer:replaceItemDescription', async (_e, obj) => {
-  try {
-    const { filePath, ids, newDescription, desenho } = obj || {};
-    if (!filePath || !Array.isArray(ids) || ids.length === 0 || typeof newDescription !== 'string') {
-      send('error', { where: 'replaceItemDescription', message: 'Parâmetros inválidos.' });
-      return { ok: false, message: 'invalid-params' };
-    }
-
-    const cfg = currentCfg || (await loadCfg());
-    const real = await resolveFilePathMaybeBase(filePath, cfg);
-    if (!real) {
-      send('error', { where: 'replaceItemDescription', message: 'Arquivo não encontrado.' });
-      return { ok: false, message: 'not-found' };
-    }
-
-    let raw = await fsp.readFile(real, 'utf8');
-    const counts = {};
-
-    for (const id of ids) {
-      if (!id) continue;
-      
-      // Step 1: Build the itemRegex targeting by DESENHO (if provided) or ID as fallback
-      let itemRegex;
-      if (desenho) {
-        const escapedDesenho = escapeRegExp(String(desenho));
-        itemRegex = new RegExp(`<ITEM(?:[^<]|\\n)*?DESENHO\\s*=\\s*"${escapedDesenho}"(?:[^<]|\\n)*?(?:>|/>)`, 'gi');
-      } else {
-        const escapedId = escapeRegExp(String(id));
-        itemRegex = new RegExp(`<ITEM(?:[^<]|\\n)*?ID\\s*=\\s*"${escapedId}"(?:[^<]|\\n)*?(?:>|/>)`, 'gi');
-      }
-
-      let oldDesc = "";
-      let itemDrawing = desenho || "";
-      
-      // Step 2: Find the old description and drawing from this item tag first
-      const matchItem = raw.match(itemRegex);
-      if (matchItem && matchItem[0]) {
-        const descAttrRegex = /DESCRICAO\s*=\s*"([^"]*)"/i;
-        const matchDesc = matchItem[0].match(descAttrRegex);
-        if (matchDesc) {
-          oldDesc = matchDesc[1];
-        }
-        
-        if (!itemDrawing) {
-          const desenhoAttrRegex = /DESENHO\s*=\s*"([^"]*)"/i;
-          const matchDesenho = matchItem[0].match(desenhoAttrRegex);
-          if (matchDesenho) {
-            itemDrawing = matchDesenho[1];
-          }
-        }
-      }
-
-      let c = 0;
-      
-      // Step 3: Replace DESCRICAO on the ITEM tag
-      raw = raw.replace(itemRegex, (itemMatch) => {
-        let updated = itemMatch;
-        const descAttrRegex = /DESCRICAO\s*=\s*"([^"]*)"/i;
-        const matchDesc = updated.match(descAttrRegex);
-
-        if (matchDesc) {
-          updated = updated.replace(descAttrRegex, `DESCRICAO="${String(newDescription)}"`);
-          c++;
-        } else {
-          updated = updated.replace(/[\s\S]*?>/, (match) => {
-            return match.replace(/[\s\n]*>/, ` DESCRICAO="${String(newDescription)}"`);
-          });
-          c++;
-        }
-        return updated;
-      });
-
-      // Step 4: If we found an old description, replace `<COLUNA CODIGO="PartName" RESPOSTA="..." />` ONLY inside corresponding `<SETUP>` blocks
-      if (oldDesc) {
-        if (itemDrawing) {
-          const escapedDesenho = escapeRegExp(itemDrawing);
-          const setupRegex = /<SETUP\b[\s\S]*?<\/SETUP>/gi;
-          
-          raw = raw.replace(setupRegex, (setupBlock) => {
-            const hasDrawing = new RegExp(`\\b${escapedDesenho}\\b`, 'i').test(setupBlock);
-            if (hasDrawing) {
-              const escapedOldDesc = escapeRegExp(oldDesc.trim());
-              const partNameRegex = new RegExp(`<COLUNA\\s+CODIGO\\s*=\\s*"PartName"\\s+RESPOSTA\\s*=\\s*"\\s*${escapedOldDesc}\\s*"\\s*/>`, 'gi');
-              
-              return setupBlock.replace(partNameRegex, () => {
-                c++;
-                return `<COLUNA CODIGO="PartName" RESPOSTA="${String(newDescription)}" />`;
-              });
-            }
-            return setupBlock;
-          });
-        } else {
-          // Fallback globally if no drawing code is found
-          const escapedOldDesc = escapeRegExp(oldDesc.trim());
-          const partNameRegex = new RegExp(`<COLUNA\\s+CODIGO\\s*=\\s*"PartName"\\s+RESPOSTA\\s*=\\s*"\\s*${escapedOldDesc}\\s*"\\s*/>`, 'gi');
-          
-          raw = raw.replace(partNameRegex, () => {
-            c++;
-            return `<COLUNA CODIGO="PartName" RESPOSTA="${String(newDescription)}" />`;
-          });
-        }
-      }
-
-      counts[id] = c;
-    }
-
-    const total = Object.values(counts).reduce((s, n) => s + (n || 0), 0);
-    if (total === 0) return { ok: false, message: 'no-match' };
-
-    // backup
-    await fse.ensureDir(REPLACE_BACKUP_DIR);
-    const base = path.basename(real);
-    const backupName = `${base.replace(/\.xml$/i, '')}_backup_desc_${Date.now()}.xml`;
-    const backupPath = path.join(REPLACE_BACKUP_DIR, backupName);
-    try { await fse.copy(real, backupPath, { overwrite: true }); } catch (e) { /* continue */ }
-
-    // escrever arquivo
-    await fsp.writeFile(real, raw, 'utf8');
-
-    // history
-    const entry = {
-      id: Date.now(),
-      file: path.resolve(real),
-      backupPath,
-      timestamp: new Date().toISOString(),
-      type: 'replace-description',
-      ids,
-      newDescription,
-      counts,
-      undone: false,
-    };
-    try { await appendReplaceHistory(entry); } catch (e) { /* ignorar */ }
-
-    // Reprocessar arquivo
-    let finalPath = path.resolve(real);
-    const originalPath = finalPath;
-    try {
-      const analysis = await validateXml(real, cfg);
-      const isOK = (analysis.erros || []).length === 0;
-      const baseName = path.basename(real);
-      const destDir = isOK ? (cfg.ok || cfg.exportacao) : (cfg.erro || cfg.exportacao);
-
-      if (destDir) {
-        await fse.ensureDir(destDir);
-        const target = path.join(destDir, baseName);
-        if (path.resolve(target).toLowerCase() !== finalPath.toLowerCase()) {
-          try {
-            await fse.move(finalPath, target, { overwrite: true });
-            finalPath = path.resolve(target);
-
-            if (isOK && originalPath.toLowerCase() !== finalPath.toLowerCase()) {
-              try {
-                await fse.remove(originalPath);
-              } catch (delErr) { }
-            }
-          } catch { }
-        }
-      }
-
-      const logDir = isOK ? cfg.logsProcessed : cfg.logsErrors;
-      if (logDir) {
-        await fse.ensureDir(logDir);
-        const logName = baseName.replace(/\.xml$/i, '') + `_${isOK ? 'ok' : 'erro'}.json`;
-        await fsp.writeFile(path.join(logDir, logName), JSON.stringify(analysis, null, 2), 'utf8');
-      }
-
-      send('file-validated', { ...analysis, arquivo: finalPath });
-    } catch (e) {
-      send('error', { where: 'replaceItemDescription-processOne', message: String(e?.message || e) });
-    }
-
-    return { ok: true, counts, backupPath, arquivo: finalPath };
-  } catch (e) {
-    send('error', { where: 'replaceItemDescription', message: String((e && e.message) || e) });
-    return { ok: false, message: String((e && e.message) || e) };
-  }
-});
-
 
 /** ================== IPC: SEARCH CSV PRODUCT ================== **/
 ipcMain.handle('analyzer:searchErpProduct', async (_e, params) => {
@@ -939,10 +763,7 @@ ipcMain.handle('analyzer:searchErpProduct', async (_e, params) => {
           } else if (searchTerms.length > 0) {
             match = searchTerms.every(term => {
               const cleanTerm = term.replace(/MM$/i, '');
-              const cleanTermNoAccent = removeAccents(cleanTerm);
-              const termNoAccent = removeAccents(term);
-              const rawDescNoAccent = removeAccents(rawDesc);
-              const inDesc = rawDescNoAccent.includes(termNoAccent) || rawDescNoAccent.includes(cleanTermNoAccent);
+              const inDesc = rawDesc.includes(term);
               const inThickness = rowThickness && (rowThickness === term || rowThickness === cleanTerm);
               return inDesc || inThickness;
             });
@@ -967,23 +788,36 @@ ipcMain.handle('analyzer:searchErpProduct', async (_e, params) => {
     if (type === 'CORINGA') {
       const searchDesc = (desc || '').trim().toUpperCase();
       const codeTerm = (code || '').trim().toUpperCase();
-      
-      // Sempre buscar todas as cores com proteção de tamanho para fazer filtragem local com suporte a acentos
-      const url = `http://192.168.1.10:8081/api/cor?size=2000`;
+      let url = '';
 
-      console.log(`[COR API] Solicitando todos os registros para filtragem local: ${url}`);
+      if (codeTerm) {
+        url = `http://192.168.1.10:8085/cores/search?codigo=${encodeURIComponent(codeTerm)}`;
+      } else if (searchDesc) {
+        url = `http://192.168.1.10:8085/cores/search?descricao=${encodeURIComponent(searchDesc)}`;
+      } else {
+        url = `http://192.168.1.10:8085/cores`;
+      }
+
+      console.log(`[COR API] Solicitando: ${url}`);
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
 
       try {
         const response = await fetch(url, {
-          headers: { 'X-API-KEY': 'bartznewmoveisapi' },
+          headers: {
+            'Authorization': `Bearer ${currentCfg?.apiToken || ''}`,
+            'Content-Type': 'application/json'
+          },
           signal: controller.signal
         });
         clearTimeout(timeoutId);
 
-        if (response.ok) {
+        if (response.status === 204) {
+          // No Content - nenhum resultado encontrado
+          console.log(`[COR API] Nenhum resultado (204)`);
+        } else if (response.ok) {
           const data = await response.json();
+          // Suportar resposta paginada do Spring Boot (data.content) ou array direto
           let corResults = [];
           if (Array.isArray(data)) {
             corResults = data;
@@ -994,34 +828,31 @@ ipcMain.handle('analyzer:searchErpProduct', async (_e, params) => {
           }
 
           console.log(`[COR API] Resultados recebidos: ${corResults.length}`);
+          if (corResults.length > 0) {
+            console.log('[COR API] Exemplo de item:', JSON.stringify(corResults[0]));
+          }
 
           corResults.forEach(item => {
+            // Mapear campos: API retorna { siglaCor, descricao }
             const rowCode = (item.siglaCor || item.sigla || item.code || item.CODIGO || item.refComercial || item.id || '').toString().trim();
             const rawDesc = (item.descricao || item.description || item.DESCRICAO || item.nome || '').toString().trim();
 
+            // Ignorar itens sem código válido
             if (!rowCode) return;
 
             // Limpeza de descrição para o select
-            const rowDescFormatted = rawDesc.split('-')[0]
+            const nameOnly = rawDesc.split('-')[0].split('(')[0]
               .replace(/\b(MDF|MDP|1F|2F|BP|\d{1,2}MM)\b/gi, '')
               .replace(/\s+/g, ' ')
               .trim();
 
+            const displayDesc = `${nameOnly} (${rowCode})`;
+
             allResults.push({
               code: rowCode,
-              description: rowDescFormatted || rowCode
+              description: displayDesc
             });
           });
-
-          // Filtragem local inteligente com suporte a acentos
-          if (searchDesc || codeTerm) {
-            const queryClean = removeAccents(searchDesc || codeTerm).toUpperCase();
-            allResults = allResults.filter(res => {
-              const codeClean = removeAccents(res.code).toUpperCase();
-              const descClean = removeAccents(res.description).toUpperCase();
-              return codeClean.includes(queryClean) || descClean.includes(queryClean);
-            });
-          }
 
           // Remover duplicatas baseadas na descrição formatada
           const uniqueMap = new Map();
@@ -1048,15 +879,15 @@ ipcMain.handle('analyzer:searchErpProduct', async (_e, params) => {
       const searchTerms = searchDesc.split(/\s+/).filter(t => t.length > 0);
 
       if (codeTerm) {
-        url = `http://192.168.1.10:8081/api/item/search-code?q=${encodeURIComponent(codeTerm)}`;
+        url = `http://192.168.1.10:8085/itens/search?codigo=${encodeURIComponent(codeTerm)}`;
       } else if (searchDesc) {
         // Enviar o termo mais longo para o banco para ser mais permissivo na query inicial
         // e depois filtramos rigorosamente localmente com todos os termos.
         const longestTerm = searchTerms.reduce((a, b) => a.length > b.length ? a : b, '');
-        url = `http://192.168.1.10:8081/api/item/search-desc?q=${encodeURIComponent(longestTerm || searchDesc)}`;
+        url = `http://192.168.1.10:8085/itens/search?descricao=${encodeURIComponent(longestTerm || searchDesc)}`;
       } else if (type && typePrefixes[type]) {
         // Se não informou código nem descrição, mas selecionou um tipo, busca pelo prefixo do tipo
-        url = `http://192.168.1.10:8081/api/item/search-code?q=${encodeURIComponent(typePrefixes[type])}`;
+        url = `http://192.168.1.10:8085/itens/search?codigo=${encodeURIComponent(typePrefixes[type])}`;
       }
 
       if (url) {
@@ -1068,16 +899,22 @@ ipcMain.handle('analyzer:searchErpProduct', async (_e, params) => {
 
         try {
           const response = await fetch(url, {
-            headers: { 'X-API-KEY': 'bartznewmoveisapi' },
+            headers: {
+              'Authorization': `Bearer ${currentCfg?.apiToken || ''}`,
+              'Content-Type': 'application/json'
+            },
             signal: controller.signal
           });
           clearTimeout(timeoutId);
 
-          if (response.ok) {
+          if (response.status === 204) {
+            // No Content - nenhum resultado encontrado
+            console.log(`[ERP API] Nenhum resultado (204)`);
+          } else if (response.ok) {
             const data = await response.json();
             let erpResults = Array.isArray(data) ? data : (data ? [data] : []);
 
-            // Filtragem local inteligente com suporte a acentos
+            // Filtragem local inteligente
             erpResults = erpResults.filter(item => {
               const itemCode = (item.code || item.CODIGO || item.item_code || item.codeItem || item.refComercial || '').toString().toUpperCase();
               const itemDesc = (item.description || item.DESCRICAO || item.item_description || item.descItem || item.nomeItem || item.descricao || '').toString().toUpperCase();
@@ -1096,12 +933,9 @@ ipcMain.handle('analyzer:searchErpProduct', async (_e, params) => {
 
               // 3. Match de todos os termos da busca
               if (searchTerms.length > 0) {
-                const normDesc = removeAccents(itemDesc);
-                const normCode = removeAccents(itemCode);
                 return searchTerms.every(term => {
-                  const normTerm = removeAccents(term);
-                  const cleanNormTerm = normTerm.replace(/MM$/i, '');
-                  return normDesc.includes(normTerm) || normDesc.includes(cleanNormTerm) || normCode.includes(normTerm);
+                  const cleanTerm = term.replace(/MM$/i, '');
+                  return itemDesc.includes(term) || itemDesc.includes(cleanTerm) || itemCode.includes(term);
                 });
               }
 
@@ -1198,7 +1032,7 @@ ipcMain.handle('analyzer:searchCsvProduct', async (_e, obj) => {
     const delimiter = header.includes(';') ? ';' : '\t';
 
     // Buscar linhas que contenham o nome da cor (case-insensitive)
-    const searchTerm = removeAccents(colorName.toLowerCase());
+    const searchTerm = colorName.toLowerCase();
     const results = [];
 
     for (const line of dataLines) {
@@ -1211,7 +1045,7 @@ ipcMain.handle('analyzer:searchCsvProduct', async (_e, obj) => {
       const group = columns.length > 2 ? (columns[2] || '').trim() : '';
 
       // Verificar se a descrição contém o nome da cor
-      if (removeAccents(description.toLowerCase()).includes(searchTerm)) {
+      if (description.toLowerCase().includes(searchTerm)) {
         results.push({
           code,
           description,
@@ -1971,9 +1805,53 @@ ipcMain.handle("analyzer:moveToOk", async (_, filePath) => {
   }
 });
 
+/** --- login automático para atualizar token --- **/
+async function refreshApiToken() {
+  try {
+    const cfg = currentCfg || (await loadCfg());
+    const user = cfg.apiUsername || "admin";
+    const pass = cfg.apiPassword || "senhaapibartz";
+
+    console.log(`[Auth] Tentando login automático para: ${user}`);
+
+    // Usando GET com query parameters conforme nova implementação da API
+    const url = `http://192.168.1.10:8085/auth/login?username=${encodeURIComponent(user)}&password=${encodeURIComponent(pass)}`;
+
+    const response = await fetch(url, {
+      method: 'GET'
+    });
+
+    if (response.ok) {
+      const token = await response.text();
+      console.log(`[Auth] Token atualizado com sucesso.`);
+
+      // Atualizar config atual e salvar
+      const next = { ...cfg, apiToken: token };
+      await saveCfg(next);
+      currentCfg = next;
+
+      return true;
+    } else {
+      console.error(`[Auth] Erro no login: ${response.status} ${response.statusText}`);
+      return false;
+    }
+  } catch (e) {
+    console.error(`[Auth] Erro na requisição de login:`, e.message);
+    return false;
+  }
+}
+
 /** ----------------- lifecycle ----------------- **/
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   createWindow();
+
+  // Carregar config e tentar o primeiro login
+  currentCfg = await loadCfg();
+  await refreshApiToken();
+
+  // Agendar renovação a cada 11 horas (o token expira em 12h conforme .env)
+  setInterval(refreshApiToken, 11 * 60 * 60 * 1000);
+
   startAutomaticScheduler();
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });

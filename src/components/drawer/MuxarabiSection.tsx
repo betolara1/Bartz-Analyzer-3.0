@@ -11,6 +11,8 @@ interface MuxarabiSectionProps {
 export function MuxarabiSection({ isOpen, onToggle, data }: MuxarabiSectionProps) {
   const muxarabiItems = (data?.meta?.muxarabiItems || []) as any[];
 
+  if (muxarabiItems.length === 0) return null;
+
   return (
     <section className="rounded-xl border border-orange-200 dark:border-orange-500/30 bg-orange-50 dark:bg-orange-500/5 overflow-hidden shadow-sm transition-all duration-300">
       <div

@@ -64,7 +64,7 @@ describe('XML Validation Logic', () => {
         const xml = `<XML><ITEM ITEM_BASE="MX008001" DESCRICAO="Porta Muxarabi" /></XML>`;
         const { payload } = validateXmlContent(xml);
         expect(payload.tags).toContain('muxarabi');
-        expect(payload.warnings).toContain('MUXARABI NO PED');
+        expect(payload.warnings).toContain('MUXARABI');
         expect(payload.meta.muxarabiItems).toHaveLength(1);
         expect(payload.meta.muxarabiItems[0].itemBase).toBe('MX008001');
     });
@@ -77,10 +77,27 @@ describe('XML Validation Logic', () => {
     });
 
     it('should detect missing machines for non-ferragens files', () => {
-        // REQUIRED_PLUGINS = ["2530", "2534", "2341", "2525"]
-        const xml = `<XML><ITEM BUILDER="S" /><MAQUINA ID_PLUGIN="2341" NOME_PLUGIN="Cyflex 900" /></XML>`;
+        // REQUIRED_PLUGINS = ["2530", "2534"]
+        // Only one of them present (Aspan): should fail
+        const xmlOnlyOne = `<XML><ITEM BUILDER="S" /><MAQUINA ID_PLUGIN="2530" NOME_PLUGIN="Aspan" /></XML>`;
+        const resOnlyOne = validateXmlContent(xmlOnlyOne);
+        expect(resOnlyOne.payload.erros).toContainEqual({ descricao: 'PROBLEMA NA GERAÇÃO DE MÁQUINAS' });
+
+        // None of them present: should fail
+        const xmlNone = `<XML><ITEM BUILDER="S" /></XML>`;
+        const resNone = validateXmlContent(xmlNone);
+        expect(resNone.payload.erros).toContainEqual({ descricao: 'PROBLEMA NA GERAÇÃO DE MÁQUINAS' });
+
+        // Both present: should pass
+        const xmlBoth = `<XML><ITEM BUILDER="S" /><MAQUINA ID_PLUGIN="2530" NOME_PLUGIN="Aspan" /><MAQUINA ID_PLUGIN="2534" NOME_PLUGIN="NCB612" /></XML>`;
+        const resBoth = validateXmlContent(xmlBoth);
+        expect(resBoth.payload.erros).not.toContainEqual({ descricao: 'PROBLEMA NA GERAÇÃO DE MÁQUINAS' });
+    });
+
+    it('should NOT detect missing machines if it is ferragensOnly', () => {
+        const xml = `<XML><ITEM BUILDER="N" /></XML>`;
         const { payload } = validateXmlContent(xml);
-        expect(payload.erros).toContainEqual({ descricao: 'PROBLEMA NA GERAÇÃO DE MÁQUINAS' });
+        expect(payload.erros).not.toContainEqual({ descricao: 'PROBLEMA NA GERAÇÃO DE MÁQUINAS' });
     });
 
     it('should detect SEM ITEM FILHO when PRECO_TOTAL="0.01" and it has no children', () => {
