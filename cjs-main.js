@@ -86,6 +86,185 @@ function createWindow() {
   }
 }
 
+// --- HELPERS PARA VALIDAÇÃO NO ERP ---
+function extractItemCodes(txt) {
+  const itemMatches = Array.from(txt.matchAll(/<ITEM\b[\s\S]*?>/gi));
+  const codes = [];
+  for (const m of itemMatches) {
+    const itemTag = m[0];
+    const refMatch = itemTag.match(/\bREFERENCIA\s*=\s*"([^"]*)"/i);
+    const baseMatch = itemTag.match(/\bITEM_BASE\s*=\s*"([^"]*)"/i);
+    const ref = refMatch ? refMatch[1].trim() : "";
+    const base = baseMatch ? baseMatch[1].trim() : "";
+    const codigo = ref || base;
+    if (codigo) {
+      codes.push(codigo);
+    }
+  }
+  return Array.from(new Set(codes));
+}
+
+async function checkCodeExistsInErp(codigo, cache = {}) {
+  let processedCode = codigo.trim();
+
+  // 1. Remover sufixo CG1 ou CG2 do final do código (case-insensitive)
+  if (/cg[12]$/i.test(processedCode)) {
+    processedCode = processedCode.slice(0, -3);
+  }
+
+  // 2. Se o código terminar com um número seguido de exatamente duas letras (sufixo de cor), remove as duas letras
+  if (/\d[a-zA-Z]{2}$/.test(processedCode)) {
+    processedCode = processedCode.slice(0, -2);
+  }
+
+  const upperCode = processedCode.toUpperCase();
+  if (!upperCode) return true;
+
+  // Ignorar códigos de cores coringas
+  const wildcardPatterns = [
+    'CHAPA_CG',
+    'PAINEL_CG',
+    'FITA_CG',
+    'TAPAFURO_CG',
+    'CAPA_CG'
+  ];
+  if (wildcardPatterns.some(p => upperCode.includes(p))) {
+    return true; // Ignora a consulta no ERP, assume como válido para este check
+  }
+
+  if (cache.results && cache.results.has(upperCode)) {
+    return cache.results.get(upperCode);
+  }
+
+  let exists = false;
+
+  // 1. Verificar CSV de painéis
+  if (!exists && cache.panels) {
+    exists = cache.panels.has(upperCode);
+  } else if (!exists) {
+    try {
+      const csvPath = '\\\\192.168.1.10\\Promob\\codigos_paineis.csv';
+      if (await fse.pathExists(csvPath)) {
+        const content = await fsp.readFile(csvPath, 'utf8');
+        const lines = content.split(/\r?\n/).filter(x => x.trim());
+        const header = lines[0] || '';
+        const delimiter = header.includes(';') ? ';' : '\t';
+        cache.panels = new Set();
+        for (let i = 1; i < lines.length; i++) {
+          const cols = lines[i].split(delimiter);
+          if (cols.length < 2) continue;
+          const rowCode = (cols[0] || '').trim().toUpperCase();
+          if (rowCode) cache.panels.add(rowCode);
+        }
+        exists = cache.panels.has(upperCode);
+      }
+    } catch (csvErr) {
+      console.error('[ERP Validation] Erro ao ler CSV de painéis:', csvErr.message);
+    }
+  }
+
+  // 2. Verificar API de cores
+  if (!exists && cache.colors) {
+    exists = cache.colors.has(upperCode);
+  } else if (!exists) {
+    try {
+      const url = `http://192.168.1.10:8081/api/cor?size=2000`;
+      const response = await fetch(url, {
+        headers: { 'X-API-KEY': 'bartznewmoveisapi' },
+        signal: AbortSignal.timeout(15000)
+      });
+      if (response.ok) {
+        if (response.status === 204) {
+          exists = false;
+        } else {
+          const text = await response.text();
+          if (!text || text.trim() === '') {
+            exists = false;
+          } else {
+            const data = JSON.parse(text);
+            let corResults = [];
+            if (Array.isArray(data)) {
+              corResults = data;
+            } else if (data && Array.isArray(data.content)) {
+              corResults = data.content;
+            }
+            cache.colors = new Set();
+            corResults.forEach(item => {
+              const fields = [
+                item.siglaCor,
+                item.sigla,
+                item.code,
+                item.itemCode,
+                item.refComercial,
+                item.id
+              ];
+              fields.forEach(f => {
+                if (f) {
+                  const clean = f.toString().trim().toUpperCase();
+                  cache.colors.add(clean);
+                }
+              });
+            });
+            exists = cache.colors.has(upperCode);
+          }
+        }
+      } else {
+        exists = true; // Se falhou a resposta HTTP, assume que existe para evitar falso positivo
+      }
+    } catch (colorErr) {
+      console.error('[ERP Validation] Erro ao buscar API de cores:', colorErr.message);
+      exists = true; // Timeout ou erro de rede -> assume que existe
+    }
+  }
+
+  // 3. Verificar API de itens do ERP
+  if (!exists) {
+    try {
+      const url = `http://192.168.1.10:8081/api/item/search-code?q=${encodeURIComponent(upperCode)}`;
+      const response = await fetch(url, {
+        headers: { 'X-API-KEY': 'bartznewmoveisapi' },
+        signal: AbortSignal.timeout(15000)
+      });
+      if (response.ok) {
+        if (response.status === 204) {
+          exists = false;
+        } else {
+          const text = await response.text();
+          if (!text || text.trim() === '') {
+            exists = false;
+          } else {
+            const data = JSON.parse(text);
+            const erpResults = Array.isArray(data) ? data : (data ? [data] : []);
+            exists = erpResults.some(item => {
+              const fieldsToTry = [
+                item.code,
+                item.CODIGO,
+                item.item_code,
+                item.codeItem,
+                item.refComercial
+              ];
+              return fieldsToTry.some(f => {
+                if (!f) return false;
+                const cleanField = f.toString().trim().toUpperCase();
+                return cleanField === upperCode;
+              });
+            });
+          }
+        }
+      } else {
+        exists = true; // Falha na resposta -> assume que existe
+      }
+    } catch (erpErr) {
+      console.error(`[ERP Validation] Erro ao buscar código ${upperCode} no ERP:`, erpErr.message);
+      exists = true; // Timeout ou erro de rede -> assume que existe
+    }
+  }
+
+  if (!cache.results) cache.results = new Map();
+  cache.results.set(upperCode, exists);
+  return exists;
+}
+
 // --- VALIDATION lendo conteúdo do XML e usando cfg.enableAutoFix ---
 async function validateXml(fileFullPath, cfg = {}) {
   const raw = await fsp.readFile(fileFullPath, "utf8");
@@ -97,6 +276,50 @@ async function validateXml(fileFullPath, cfg = {}) {
   // If auto-fix was enabled and text changed, save it
   if (cfg.enableAutoFix && updatedTxt !== raw) {
     await fsp.writeFile(fileFullPath, updatedTxt, "utf8");
+  }
+
+  // Consulta ERP para validar se todos os itens existem
+  try {
+    const uniqueCodes = extractItemCodes(updatedTxt);
+    if (uniqueCodes.length > 0) {
+      const cache = {};
+      const results = [];
+
+      // Lote de concorrência controlada de 5 por vez
+      const limit = 5;
+      for (let i = 0; i < uniqueCodes.length; i += limit) {
+        const chunk = uniqueCodes.slice(i, i + limit);
+        const chunkPromises = chunk.map(async (code) => {
+          const exists = await checkCodeExistsInErp(code, cache);
+          return { code, exists };
+        });
+        const chunkResults = await Promise.all(chunkPromises);
+        results.push(...chunkResults);
+      }
+
+      let missingAny = false;
+      for (const res of results) {
+        if (!res.exists) {
+          payload.erros.push({
+            descricao: `o item não encontrado no erp (${res.code})`,
+            referencia: res.code
+          });
+          missingAny = true;
+        }
+      }
+      if (missingAny) {
+        payload.tags.push("sem código erp");
+        // Dedup final das tags e erros
+        payload.tags = Array.from(new Set(payload.tags));
+        const s = new Set();
+        payload.erros = (payload.erros || []).filter(x => {
+          const k = (typeof x === "string" ? x : x?.descricao || String(x)).toLowerCase();
+          if (s.has(k)) return false; s.add(k); return true;
+        });
+      }
+    }
+  } catch (erpValErr) {
+    console.error('[ERP Validation Flow] Erro crítico na validação ERP:', erpValErr.message);
   }
 
   return payload;

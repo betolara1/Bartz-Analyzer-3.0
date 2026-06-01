@@ -6,12 +6,23 @@ import { Row } from "../../types";
 
 interface ErrorWarningSectionProps {
   data: Row | null;
+  onMoveToOk?: () => void;
 }
 
-export function ErrorWarningSection({ data }: ErrorWarningSectionProps) {
+export function ErrorWarningSection({ data, onMoveToOk }: ErrorWarningSectionProps) {
   const errors = data?.errors || [];
   const warnings = data?.warnings || [];
   const autoFixes = data?.autoFixes || [];
+
+  const isErpError = (e: string) => String(e).toLowerCase().includes("não encontrado no erp");
+  const isMuxarabiError = (e: string) => String(e).toUpperCase().includes("PEÇA MUXARABI");
+
+  const hasSemCodigoErp = data?.tags?.includes("sem código erp") || errors.some(isErpError);
+  const hasMuxarabi = data?.tags?.includes("muxarabi") || errors.some(isMuxarabiError);
+  const hasBypassableError = hasSemCodigoErp || hasMuxarabi;
+
+  const otherErrors = errors.filter(e => !isErpError(e) && !isMuxarabiError(e));
+  const hasOtherErrors = otherErrors.length > 0;
 
   if (errors.length === 0 && warnings.length === 0 && autoFixes.length === 0) {
     return (
@@ -36,6 +47,30 @@ export function ErrorWarningSection({ data }: ErrorWarningSectionProps) {
               <BadgeErro key={i} error={e} />
             ))}
           </div>
+
+          {hasBypassableError && (
+            <div className="pt-2 border-t border-border/40 mt-3">
+              <button
+                onClick={onMoveToOk}
+                disabled={hasOtherErrors}
+                className={`
+                  w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg font-bold text-xs uppercase tracking-wider transition-all duration-200
+                  ${hasOtherErrors
+                    ? "bg-zinc-800/50 text-zinc-500 border border-zinc-700/30 cursor-not-allowed opacity-60"
+                    : "bg-emerald-500 text-black hover:bg-emerald-600 shadow-lg shadow-emerald-500/10 active:scale-[0.98]"
+                  }
+                `}
+              >
+                <CheckCircle className="h-4 w-4" />
+                Enviar para OK
+              </button>
+              {hasOtherErrors && (
+                <p className="text-[10px] text-rose-400/80 font-bold tracking-wide uppercase mt-2 text-center leading-normal">
+                  * Trate as outras inconformidades primeiro para liberar o envio.
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 

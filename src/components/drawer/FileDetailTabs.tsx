@@ -144,7 +144,7 @@ function OverviewTab({ data, actions }: { data: Row | null; actions: ReturnType<
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* Coluna da Esquerda */}
         <div className="space-y-6">
-          <ErrorWarningSection data={data} />
+          <ErrorWarningSection data={data} onMoveToOk={actions.handleMoveToOk} />
           <ImportKeySection data={data} />
         </div>
 
@@ -242,7 +242,11 @@ function ActionsTab({ data, actions }: { data: Row | null; actions: ReturnType<t
       </div>
       <ErpSearchSection
         isOpen={actions.erpSearchOpen}
-        onToggle={() => actions.setErpSearchOpen(!actions.erpSearchOpen)}
+        onToggle={() => {
+          const nextState = !actions.erpSearchOpen;
+          actions.setErpSearchOpen(nextState);
+          actions.setCoringaOpen(nextState);
+        }}
         data={data}
         erpSearchCode={actions.erpSearchCode}
         setErpSearchCode={actions.setErpSearchCode}
@@ -267,7 +271,11 @@ function ActionsTab({ data, actions }: { data: Row | null; actions: ReturnType<t
       />
       <CoringaSection
         isOpen={actions.coringaOpen}
-        onToggle={() => actions.setCoringaOpen(!actions.coringaOpen)}
+        onToggle={() => {
+          const nextState = !actions.coringaOpen;
+          actions.setErpSearchOpen(nextState);
+          actions.setCoringaOpen(nextState);
+        }}
         data={data}
         coringaFrom={actions.coringaFrom}
         setCoringaFrom={actions.setCoringaFrom}

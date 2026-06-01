@@ -208,6 +208,7 @@ function validateXmlContent(txt, cfg = {}) {
             payload.meta.muxarabiItems = Array.from(mxMap.values());
         }
         if (/\bMX008001\b/i.test(txt) || /\bMX008002\b/i.test(txt)) {
+            payload.erros.push({ descricao: "PEÇA MUXARABI" });
             payload.warnings.push("MUXARABI");
             payload.tags.push("muxarabi");
         }

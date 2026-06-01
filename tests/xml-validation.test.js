@@ -65,6 +65,7 @@ describe('XML Validation Logic', () => {
         const { payload } = validateXmlContent(xml);
         expect(payload.tags).toContain('muxarabi');
         expect(payload.warnings).toContain('MUXARABI');
+        expect(payload.erros).toContainEqual({ descricao: 'PEÇA MUXARABI' });
         expect(payload.meta.muxarabiItems).toHaveLength(1);
         expect(payload.meta.muxarabiItems[0].itemBase).toBe('MX008001');
     });
