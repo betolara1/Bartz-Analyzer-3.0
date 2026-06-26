@@ -26,6 +26,8 @@ import { ErpSearchSection } from "./ErpSearchSection";
 import { CoringaSection } from "./CoringaSection";
 import { PendingRefSection } from "./PendingRefSection";
 import { SemFilhoSection } from "./SemFilhoSection";
+import { MissingErpItemsSection } from "./MissingErpItemsSection";
+
 
 type TabKey = "overview" | "components" | "actions" | "diagnostics";
 
@@ -49,13 +51,16 @@ export function FileDetailTabs({ data, actions, activeTab, onTabChange }: FileDe
   const hasCoringa2 = !!data?.meta?.coringa2_detected;
   const hasRefError = (data?.errors ?? []).some(er => String(er).toUpperCase().includes("ITEM SEM CÓDIGO"));
   const hasCoringaMatches = (data?.meta?.coringaMatches?.length || 0) > 0;
-  const hasReferenciaEmpty = (data?.meta?.referenciaEmpty?.length || 0) > 0;
+  const hasErpErrors = (data?.meta?.missingErpItems || []).length > 0;
+  const hasReferenciaEmpty = (data?.meta?.referenciaEmpty || []).length > 0;
 
   const hasActions = hasCoringaMatches ||
     hasRefError ||
+    hasErpErrors ||
     actions.filteredCoringaMatches.length > 0 ||
     hasCG1 || hasCG2 || hasCoringa1 || hasCoringa2 ||
     hasReferenciaEmpty;
+
 
   const hasSemFilho = !!data?.tags?.includes('sem_filho');
   const hasEs08 = (data?.meta?.es08Matches || []).length > 0;
@@ -149,6 +154,8 @@ function OverviewTab({ data, actions }: { data: Row | null; actions: ReturnType<
           <ErrorWarningSection data={data} onMoveToOk={actions.handleMoveToOk} />
           <ImportKeySection data={data} />
         </div>
+
+
 
         {/* Coluna da Direita */}
         <div className="space-y-6">
@@ -249,6 +256,14 @@ function ActionsTab({ data, actions }: { data: Row | null; actions: ReturnType<t
           onFetch={actions.fetchOrderComments}
         />
       </div>
+      <div className="lg:col-span-2">
+        <MissingErpItemsSection
+          isOpen={actions.missingErpItemsOpen}
+          onToggle={() => actions.setMissingErpItemsOpen(!actions.missingErpItemsOpen)}
+          data={data}
+        />
+      </div>
+
       <ErpSearchSection
         isOpen={actions.erpSearchOpen}
         onToggle={() => {

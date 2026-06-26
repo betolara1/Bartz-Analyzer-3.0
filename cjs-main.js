@@ -313,6 +313,47 @@ async function validateXml(fileFullPath, cfg = {}) {
       globalColorsCache = cache.colors;
 
       let missingAny = false;
+      const missingErpItems = [];
+
+      // Extrair todos os itens do XML para associar detalhes caso não existam no ERP
+      const xmlItems = [];
+      const itemMatches = Array.from(updatedTxt.matchAll(/<ITEM\b[\s\S]*?>/gi));
+      for (const m of itemMatches) {
+        const itemTag = m[0];
+        const idMatch = itemTag.match(/\bID\s*=\s*"([^"]*)"/i);
+        const refMatch = itemTag.match(/\bREFERENCIA\s*=\s*"([^"]*)"/i);
+        const baseMatch = itemTag.match(/\bITEM_BASE\s*=\s*"([^"]*)"/i);
+        const descMatch = itemTag.match(/\bDESCRICAO\s*=\s*"([^"]*)"/i);
+        const largMatch = itemTag.match(/\bLARGURA\s*=\s*"([^"]*)"/i);
+        const altMatch = itemTag.match(/\bALTURA\s*=\s*"([^"]*)"/i);
+        const profMatch = itemTag.match(/\bPROFUNDIDADE\s*=\s*"([^"]*)"/i);
+        const caminhoMatch = itemTag.match(/\bCAMINHOITEMCATALOG\s*=\s*"([^"]*)"/i);
+
+        const ref = refMatch ? refMatch[1].trim() : "";
+        const base = baseMatch ? baseMatch[1].trim() : "";
+        const code = ref || base;
+
+        if (code) {
+          const parseDim = (val) => {
+            if (!val) return "0";
+            const num = parseFloat(val);
+            return isNaN(num) ? "0" : Math.round(num).toString();
+          };
+
+          xmlItems.push({
+            id: idMatch ? idMatch[1] : "",
+            code: code,
+            referencia: ref,
+            itemBase: base,
+            descricao: descMatch ? descMatch[1] : "",
+            largura: parseDim(largMatch ? largMatch[1] : ""),
+            altura: parseDim(altMatch ? altMatch[1] : ""),
+            profundidade: parseDim(profMatch ? profMatch[1] : ""),
+            caminhoItemCatalog: caminhoMatch ? caminhoMatch[1] : ""
+          });
+        }
+      }
+
       for (const res of results) {
         if (!res.exists) {
           payload.erros.push({
@@ -320,10 +361,19 @@ async function validateXml(fileFullPath, cfg = {}) {
             referencia: res.code
           });
           missingAny = true;
+
+          // Buscar itens correspondentes no XML para detalhar
+          const matchingItems = xmlItems.filter(item => item.code.toUpperCase() === res.code.toUpperCase());
+          for (const item of matchingItems) {
+            if (!missingErpItems.some(x => x.id === item.id)) {
+              missingErpItems.push(item);
+            }
+          }
         }
       }
       if (missingAny) {
         payload.tags.push("sem código erp");
+        payload.meta.missingErpItems = missingErpItems;
         // Dedup final das tags e erros
         payload.tags = Array.from(new Set(payload.tags));
         const s = new Set();

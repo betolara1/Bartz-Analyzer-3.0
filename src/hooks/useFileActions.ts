@@ -18,6 +18,8 @@ export function useFileActions(
   const [muxarabiOpen, setMuxarabiOpen] = useState(false);
   const [es08Open, setEs08Open] = useState(false);
   const [semFilhoOpen, setSemFilhoOpen] = useState(false);
+  const [missingErpItemsOpen, setMissingErpItemsOpen] = useState(false);
+
 
   // ERP Search
   const [erpSearchCode, setErpSearchCode] = useState('');
@@ -156,6 +158,8 @@ export function useFileActions(
       setMuxarabiOpen(false);
       setEs08Open(false);
       setSemFilhoOpen(false);
+      setMissingErpItemsOpen(false);
+
 
       // Reset search fields and results
       setErpSearchCode('');
@@ -617,7 +621,9 @@ export function useFileActions(
     cg2Replace, setCg2Replace,
     cg2Done, setCg2Done,
     semFilhoOpen, setSemFilhoOpen,
+    missingErpItemsOpen, setMissingErpItemsOpen,
     confirmMoveEmptyOpen, setConfirmMoveEmptyOpen,
+
     confirmMoveOkOpen, setConfirmMoveOkOpen,
 
     // Multi-problem resolution
