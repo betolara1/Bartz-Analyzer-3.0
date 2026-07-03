@@ -78,7 +78,12 @@ graph TD
 - **Agendador Inteligente (Scheduler):**
   - **Relatórios Diários:** Geração e exportação automática em lote de relatórios nos formatos JSON e CSV para a pasta do trabalhador às **11:30** e **17:30**.
   - **Rotina de Limpeza:** Faxina programada diária às **17:30** para manter as pastas de processamento (`ok`, `erro`, `log_proc`, `log_erro`) limpas e otimizadas.
-- **Dashboard Interativo em Tempo Real:** Interface elegante construída com React, TypeScript e Tailwind CSS, alimentada por canais IPC bidirecionais eficientes para exibir o status em tempo real de cada análise, alertas, pendências e itens especiais.
+- **Dashboard Interativo em Tempo Real:** Interface elegante construída com React, TypeScript e Tailwind CSS, alimentada por canais IPC de alto desempenho.
+  - **Aba de Itens Completa (Visualização & Edição):** Nova funcionalidade que lista todos os itens (pais e filhos) do XML, permitindo alterar suas descrições e visualizar detalhes sem abrir o XML bruto.
+  - **Visualização de Desenhos Técnicos:** Integração com botões de "Abrir Desenho" em todas as abas de itens, acelerando as conferências no chão de fábrica.
+  - **Abertura Inteligente de Muxarabis:** Abertura automática de arquivos de desenho de Muxarabi (.dxf) conforme a dimensão exigida no pedido (ex: 25x25, 40x25, etc.).
+- **Resiliência com Itens Sem Cadastro:** Tratamento e exibição inteligente de itens que não possuem código ou cadastro no ERP.
+- **Filtragem de Pedidos de Compra (PO):** Ajuste na lógica para exibir somente códigos de formato `POXXXXXX` com 6 números (em vez de 4).
 
 ---
 
@@ -89,6 +94,7 @@ graph TD
  ├── 🖥️ cjs-main.js          # Arquivo de entrada do processo principal (Main Process)
  ├── 🖥️ preload.js           # Ponte de segurança IPC entre Main e Renderer
  ├── 🖥️ electron/            # Módulos do Processo Principal (Watcher, File System, IPC, APIs)
+ ├── 📂 Muxarabi/            # Biblioteca de desenhos de Muxarabi (.dxf) por dimensões
  ├── 🎨 src/                 # Processo de Renderização (Interface React + Vite)
  │    ├── 🧩 components/     # Componentes de UI Modulares (Radix UI, Lucide)
  │    │    └── 🗂️ drawer/    # Detalhes do pedido, Abas e Alertas de Engenharia
