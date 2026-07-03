@@ -181,8 +181,8 @@ function validateXmlContent(txt, cfg = {}) {
         const poItems = [];
         for (const m of itemMatches) {
             const itemTag = m[0];
-            const baseMatch = itemTag.match(/\bITEM_BASE\s*=\s*"(PO\d{4}[^"]*)"/i);
-            const refMatch = itemTag.match(/\bREFERENCIA\s*=\s*"(PO\d{4}[^"]*)"/i);
+            const baseMatch = itemTag.match(/\bITEM_BASE\s*=\s*"(PO\d{6}[^"]*)"/i);
+            const refMatch = itemTag.match(/\bREFERENCIA\s*=\s*"(PO\d{6}[^"]*)"/i);
             if (baseMatch || refMatch) {
                 const itemBase = (baseMatch ? baseMatch[1] : refMatch[1]).toUpperCase();
                 const referencia = (refMatch ? refMatch[1] : (baseMatch ? baseMatch[1] : "")).toUpperCase();
@@ -298,6 +298,56 @@ function validateXmlContent(txt, cfg = {}) {
             }
         };
         findItens(jsonObj);
+
+        // EXTRAÇÃO E AGRUPAMENTO DE TODOS OS ITENS (PAIS E FILHOS)
+        const allItemsList = [];
+        const parseDim = (val) => {
+            if (!val) return 0;
+            const parsed = parseFloat(val);
+            return isNaN(parsed) ? 0 : Math.round(parsed);
+        };
+
+        for (const item of allItens) {
+            const id = String(item.ID || "").trim();
+            if (!id) continue;
+
+            const itemBase = String(item.ITEM_BASE || "").trim().toUpperCase();
+            const referencia = String(item.REFERENCIA || "").trim().toUpperCase();
+            const desenho = String(item.DESENHO || "").trim();
+            const descricao = String(item.DESCRICAO || "").trim();
+            
+            const l = parseDim(item.LARGURA);
+            const a = parseDim(item.ALTURA);
+            const p = parseDim(item.PROFUNDIDADE);
+
+            allItemsList.push({
+                id,
+                itemBase,
+                referencia,
+                desenho,
+                descricao,
+                dimensao: `${l}x${a}x${p}`
+            });
+        }
+
+        const itemsMap = new Map();
+        for (const s of allItemsList) {
+            const key = `${s.itemBase}|${s.referencia}|${s.desenho}|${s.descricao}|${s.dimensao}`;
+            if (!itemsMap.has(key)) {
+                itemsMap.set(key, {
+                    id: s.id,
+                    itemBase: s.itemBase,
+                    referencia: s.referencia,
+                    desenho: s.desenho,
+                    descricao: s.descricao,
+                    dimensao: s.dimensao,
+                    ids: [s.id]
+                });
+            } else {
+                itemsMap.get(key).ids.push(s.id);
+            }
+        }
+        payload.meta.allItems = Array.from(itemsMap.values());
 
         const semFilhoMatches = [];
         for (const item of allItens) {

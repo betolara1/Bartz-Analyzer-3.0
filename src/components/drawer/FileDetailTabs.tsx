@@ -7,6 +7,7 @@ import {
   FolderOpen,
   Clock,
   Copy,
+  List,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Row } from "../../types";
@@ -27,9 +28,10 @@ import { CoringaSection } from "./CoringaSection";
 import { PendingRefSection } from "./PendingRefSection";
 import { SemFilhoSection } from "./SemFilhoSection";
 import { MissingErpItemsSection } from "./MissingErpItemsSection";
+import { ItemsSection } from "./ItemsSection";
 
 
-type TabKey = "overview" | "components" | "actions" | "diagnostics";
+type TabKey = "overview" | "components" | "actions" | "diagnostics" | "items";
 
 interface TabDef {
   key: TabKey;
@@ -67,11 +69,13 @@ export function FileDetailTabs({ data, actions, activeTab, onTabChange }: FileDe
   const hasSpecialItems = (data?.meta?.specialItems || []).length > 0;
   const hasPoItems = (data?.meta?.poItems || []).length > 0;
   const hasMuxarabi = (data?.meta?.muxarabiItems || []).length > 0;
+  const hasAllItems = (data?.meta?.allItems || []).length > 0;
   const hasComponents = hasSemFilho || hasEs08 || hasSpecialItems || hasPoItems || hasMuxarabi;
 
   const tabs: TabDef[] = [
     { key: "overview", label: "Visão Geral", icon: <Eye className="h-3.5 w-3.5" /> },
     ...(hasComponents ? [{ key: "components", label: "Componentes", icon: <Boxes className="h-3.5 w-3.5" /> } as TabDef] : []),
+    ...(hasAllItems ? [{ key: "items", label: "Itens", icon: <List className="h-3.5 w-3.5" /> } as TabDef] : []),
     ...(hasActions ? [{ key: "actions", label: "Ações Manuais", icon: <Wrench className="h-3.5 w-3.5" /> } as TabDef] : []),
   ];
 
@@ -88,6 +92,13 @@ export function FileDetailTabs({ data, actions, activeTab, onTabChange }: FileDe
       onTabChange("overview");
     }
   }, [hasComponents, activeTab, onTabChange]);
+
+  // If items tab is active but no longer available, switch to overview
+  React.useEffect(() => {
+    if (activeTab === "items" && !hasAllItems) {
+      onTabChange("overview");
+    }
+  }, [hasAllItems, activeTab, onTabChange]);
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -128,6 +139,9 @@ export function FileDetailTabs({ data, actions, activeTab, onTabChange }: FileDe
           )}
           {activeTab === "components" && (
             <ComponentsTab data={data} actions={actions} />
+          )}
+          {activeTab === "items" && (
+            <ItemsTab data={data} actions={actions} />
           )}
           {activeTab === "actions" && (
             <ActionsTab data={data} actions={actions} />
@@ -231,6 +245,19 @@ function ComponentsTab({ data, actions }: { data: Row | null; actions: ReturnTyp
           data={data}
         />
       </div>
+    </div>
+  );
+}
+
+/* ─── TAB: Itens ─── */
+function ItemsTab({ data, actions }: { data: Row | null; actions: ReturnType<typeof useFileActions> }) {
+  return (
+    <div className="space-y-6">
+      <ItemsSection
+        isOpen={true}
+        onToggle={() => {}}
+        data={data}
+      />
     </div>
   );
 }
