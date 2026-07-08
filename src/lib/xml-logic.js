@@ -462,7 +462,8 @@ function validateXmlContent(txt, cfg = {}) {
         const REQUIRED_PLUGINS = ["2530", "2534"];
         const seen = new Set(machines.map(m => m.id));
         if (!REQUIRED_PLUGINS.every(id => seen.has(id))) {
-            payload.erros.push({ descricao: "PROBLEMA NA GERAÇÃO DE MÁQUINAS" });
+            payload.tags.push("PROBLEMA NA GERAÇÃO DE MÁQUINAS");
+            payload.warnings.push("PROBLEMA NA GERAÇÃO DE MÁQUINAS");
         }
         const PLUGIN_NAMES = { "2530": "Aspan", "2534": "NCB612" };
         payload.meta.machines = Array.from(seen).map(id => ({ id, name: PLUGIN_NAMES[id] }));

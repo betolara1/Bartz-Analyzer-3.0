@@ -274,35 +274,7 @@ export function Es08Section({
                 </span>
               </div>
             </div>
-            {isResolved ? (
-              <div className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                <Check className="h-4 w-4" />
-                <span className="text-xs font-bold uppercase tracking-widest">Resolvido ✓</span>
-              </div>
-            ) : (
-              <button
-                onClick={() => {
-                  if (allOk) {
-                    onResolve();
-                  } else {
-                    onOpenConfirmMove();
-                  }
-                }}
-                className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold uppercase tracking-widest shadow-lg transition-all flex items-center gap-2 active:scale-95 ${allOk
-                  ? (otherPendingCount === 0
-                      ? 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-900/20'
-                      : 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/20')
-                  : 'bg-amber-600 hover:bg-amber-500 shadow-amber-900/20'
-                  }`}
-              >
-                {allOk && otherPendingCount === 0 
-                  ? 'Resolver e Mover para OK' 
-                  : allOk 
-                    ? `Marcar como Resolvido (${otherPendingCount} pendente)` 
-                    : 'Mover para OK'}
-                <ChevronRight className="h-4 w-4" />
-              </button>
-            )}
+            
           </div>
         </div>
       )}

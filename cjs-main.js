@@ -393,6 +393,40 @@ async function validateXml(fileFullPath, cfg = {}) {
 async function processOne(fileFullPath, cfg) {
   try {
     const analysis = await validateXml(fileFullPath, cfg);
+
+    // AUTO-FIX DUPLADO 37MM (ES08) - AUTOMATIZAÇÃO DE CORREÇÃO DXF
+    if (cfg.enableAutoFix && analysis.meta && analysis.meta.es08Matches && analysis.meta.es08Matches.length > 0 && cfg.drawings) {
+      let fixedCount = 0;
+      
+      for (const match of analysis.meta.es08Matches) {
+        if (!match.desenho) continue;
+        const exactFilename = `${match.desenho.toLowerCase()}.dxf`;
+        const fullPath = await findFileRecursive(cfg.drawings, exactFilename);
+        
+        if (fullPath) {
+          const res = await doFixFresa37to18(fullPath);
+          if (res.ok) {
+            fixedCount++;
+            if (!analysis.autoFixes) analysis.autoFixes = [];
+            analysis.autoFixes.push(`DXF: corrigido 37mm para 18mm no arquivo ${match.desenho}`);
+          } else if (res.message === 'Nenhuma alteração foi necessária') {
+            fixedCount++;
+            if (!analysis.autoFixes) analysis.autoFixes = [];
+            analysis.autoFixes.push(`DXF: já estava correto (18mm) no arquivo ${match.desenho}`);
+          }
+        }
+      }
+      
+      if (fixedCount > 0) {
+        // Remover o erro "ITEM DUPLADO 37MM" da lista se resolvemos algum
+        analysis.erros = (analysis.erros || []).filter(e => (e.descricao || e).toUpperCase() !== "ITEM DUPLADO 37MM");
+        
+        // Assegurar que a tag "duplado_autofix" seja adicionada para manter rastro
+        if (!analysis.tags) analysis.tags = [];
+        analysis.tags.push("duplado_autofix");
+      }
+    }
+
     const isOK = (analysis.erros || []).length === 0;
 
     const baseName = path.basename(fileFullPath);
@@ -1848,7 +1882,7 @@ ipcMain.handle('analyzer:openMuxarabiDrawing', async (_e, arg) => {
 });
 
 /** ================== IPC: FIX FRESA 37 TO 18 ================== **/
-ipcMain.handle('analyzer:fixFresa37to18', async (_e, dxfFilePath) => {
+async function doFixFresa37to18(dxfFilePath) {
   try {
     console.log('[DXF Fix] ========== INICIANDO CORREÇÃO ==========');
     console.log('[DXF Fix] Arquivo DXF:', dxfFilePath);
@@ -1868,7 +1902,6 @@ ipcMain.handle('analyzer:fixFresa37to18', async (_e, dxfFilePath) => {
     let panelModified = false;
     let fresaModified = false;
     let firstPanelFound = false;
-    let firstFresa37Found = false;
 
     // Processar linhas
     for (let i = 0; i < lines.length; i++) {
@@ -2003,6 +2036,10 @@ ipcMain.handle('analyzer:fixFresa37to18', async (_e, dxfFilePath) => {
     console.error('[DXF Fix] Stack:', e.stack);
     return { ok: false, message: `Erro ao corrigir: ${String(e && e.message || e)}` };
   }
+}
+
+ipcMain.handle('analyzer:fixFresa37to18', async (_e, dxfFilePath) => {
+  return await doFixFresa37to18(dxfFilePath);
 });
 
 /** ================== RELATÓRIO AUTOMÁTICO ================== **/
