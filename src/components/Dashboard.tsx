@@ -521,6 +521,7 @@ export default function Dashboard() {
             <Button variant="outline" onClick={handleClearFolders} className="gap-2 border-red-600/30 hover:bg-red-600/10 text-red-600 dark:text-red-500"><XCircle className="h-4 w-4" /> Excluir arquivos</Button>
           </div>
           <div className="h-8 w-px bg-border mx-1" />
+          <Button variant="outline" onClick={() => window.electron?.updater?.checkForUpdates?.()} className="gap-2 border-border hover:bg-muted text-muted-foreground"><RefreshCw className="h-4 w-4" /> Atualizar</Button>
           <ThemeToggle />
         </div>
       </div>
@@ -1079,7 +1080,6 @@ export default function Dashboard() {
       </AlertDialog>
 
       {/* toasts */}
-      <Toaster richColors position="bottom-left" closeButton />
     </div>
   );
 }

@@ -37,6 +37,32 @@ contextBridge.exposeInMainWorld('electron', {
     testPaths: (data) => ipcRenderer.invoke('settings:testPaths', data),
     pickFolder: (initial) => ipcRenderer.invoke('settings:pickFolder', initial || ''),
   },
+
+  updater: {
+    onUpdateAvailable: (cb) => {
+      ipcRenderer.removeAllListeners('updater:available');
+      ipcRenderer.on('updater:available', (_e, info) => cb && cb(info));
+    },
+    onUpdateProgress: (cb) => {
+      ipcRenderer.removeAllListeners('updater:progress');
+      ipcRenderer.on('updater:progress', (_e, progressObj) => cb && cb(progressObj));
+    },
+    onUpdateDownloaded: (cb) => {
+      ipcRenderer.removeAllListeners('updater:downloaded');
+      ipcRenderer.on('updater:downloaded', (_e, info) => cb && cb(info));
+    },
+    onUpdateNotAvailable: (cb) => {
+      ipcRenderer.removeAllListeners('updater:not-available');
+      ipcRenderer.on('updater:not-available', (_e, info) => cb && cb(info));
+    },
+    onUpdateError: (cb) => {
+      ipcRenderer.removeAllListeners('updater:error');
+      ipcRenderer.on('updater:error', (_e, err) => cb && cb(err));
+    },
+    checkForUpdates: () => ipcRenderer.invoke('updater:check'),
+    startDownload: () => ipcRenderer.invoke('updater:start-download'),
+    installUpdate: () => ipcRenderer.invoke('updater:install'),
+  },
 });
 
 // Capturar erros do renderer (React/JS) e enviar para o processo principal (terminal)

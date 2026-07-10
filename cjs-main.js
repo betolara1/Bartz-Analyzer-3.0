@@ -9,6 +9,7 @@ const fsp = fs.promises;
 const chokidar = require("chokidar");
 const fse = require("fs-extra");
 const { validateXmlContent } = require(path.join(__dirname, "src", "lib", "xml-logic.js"));
+const { autoUpdater } = require("electron-updater");
 
 let win = null;
 let watcher = null;
@@ -76,6 +77,8 @@ function createWindow() {
       contextIsolation: true,
     },
   });
+
+  win.removeMenu();
 
   if (process.env.VITE_DEV) {
     win.loadURL("http://localhost:5174/");
@@ -2891,10 +2894,58 @@ ipcMain.handle("analyzer:moveToOk", async (_, filePath) => {
   }
 });
 
+/** ================== IPC: AUTO-UPDATER ================== **/
+autoUpdater.autoDownload = false; // Não baixa sozinho, pergunta antes
+autoUpdater.autoInstallOnAppQuit = true;
+
+autoUpdater.on('update-available', (info) => {
+  console.log('Update available:', info);
+  if (win) win.webContents.send('updater:available', info);
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+  if (win) win.webContents.send('updater:progress', progressObj);
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  console.log('Update downloaded:', info);
+  if (win) win.webContents.send('updater:downloaded', info);
+});
+
+autoUpdater.on('update-not-available', (info) => {
+  console.log('Update not available:', info);
+  if (win) win.webContents.send('updater:not-available', info);
+});
+
+autoUpdater.on('error', (err) => {
+  console.error('AutoUpdater Error:', err);
+  if (win) win.webContents.send('updater:error', String(err.message || err));
+});
+
+ipcMain.handle('updater:check', () => {
+  if (!process.env.VITE_DEV) {
+    autoUpdater.checkForUpdates();
+  } else {
+    if (win) win.webContents.send('updater:not-available', { version: app.getVersion() });
+  }
+});
+
+ipcMain.handle('updater:start-download', () => {
+  autoUpdater.downloadUpdate();
+});
+
+ipcMain.handle('updater:install', () => {
+  autoUpdater.quitAndInstall();
+});
+
 /** ----------------- lifecycle ----------------- **/
 app.whenReady().then(() => {
   createWindow();
   startAutomaticScheduler();
+  
+  if (!process.env.VITE_DEV) {
+    autoUpdater.checkForUpdatesAndNotify();
+  }
 });
 app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
 app.on("activate", () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });

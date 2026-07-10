@@ -20,6 +20,13 @@ declare global {
         testPaths: (data: any) => Promise<any>;
         pickFolder: (initial?: string) => Promise<string | null>;
       };
+      updater?: {
+        onUpdateAvailable: (cb: (info: any) => void) => void;
+        onUpdateProgress: (cb: (progress: any) => void) => void;
+        onUpdateDownloaded: (cb: (info: any) => void) => void;
+        startDownload: () => Promise<void>;
+        installUpdate: () => Promise<void>;
+      };
     };
   }
 }

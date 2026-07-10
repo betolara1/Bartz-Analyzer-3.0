@@ -1,6 +1,6 @@
 {
   "name": "bartz-analyzer",
-  "version": "4.0.0",
+  "version": "4.2.0",
   "private": true,
   "main": "cjs-main.js",
   "type": "commonjs",
@@ -17,6 +17,15 @@
   "build": {
     "productName": "Bartz Analyzer",
     "appId": "com.bartz.analyzer",
+    "artifactName": "Bartz-Analyzer-Setup-${version}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "betolara1",
+        "repo": "Bartz-Analyzer-4"
+      }
+    ],
+    "generateUpdatesFilesForAllChannels": true,
     "directories": {
       "output": "release"
     },
@@ -87,6 +96,7 @@
     "clsx": "^2.1.1",
     "dxf-parser": "^1.1.2",
     "electron-store": "^11.0.2",
+    "electron-updater": "^6.8.9",
     "fast-xml-parser": "^5.2.5",
     "fs-extra": "^11.3.1",
     "lucide-react": "^0.542.0",
