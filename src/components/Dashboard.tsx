@@ -13,7 +13,7 @@ import {
   Play, Pause, RefreshCw, Calendar, Save,
   AlertTriangle, Eye, FolderOpen, BarChart3, AlertCircle, Download, Check,
   ArrowRightLeft, ListTodo, FileText, CheckCircle2, TrendingUp, Activity, Send,
-  CircleHelp
+  CircleHelp, Sliders
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -27,7 +27,7 @@ import {
 } from "./ui/alert-dialog";
 import FileDetailDrawer from "./FileDetailDrawer";
 import ThemeToggle from "./ThemeToggle";
-import { PATH_CONFIGS } from "./ConfigurationScreen";
+import { PATH_CONFIGS, type PathConfigKey } from "./ConfigurationScreen";
 
 
 // ...
@@ -159,7 +159,7 @@ const getPathIcon = (key: string) => {
   }
 };
 
-export default function Dashboard() {
+export default function Dashboard({ onNavigateToConfig }: { onNavigateToConfig?: () => void }) {
   // tabela / filtros
   const [rows, setRows] = useState<Row[]>([]);
   const [search, setSearch] = useState("");
@@ -181,9 +181,10 @@ export default function Dashboard() {
     ok: "",
     erro: "",
     drawings: "",
+    simplificado: "",
     enableAutoFix: true,
   });
-  const pickFolderOptions = ["entrada", "exportacao", "ok", "erro", "drawings"] as const;
+  const pickFolderOptions = ["entrada", "exportacao", "ok", "erro", "drawings", "simplificado"] as const;
 
   // drawer de detalhes
   const [detailOpen, setDetailOpen] = useState(false);
@@ -411,7 +412,7 @@ export default function Dashboard() {
 
   // abrir seletor de pasta e preencher o campo
   async function pickFolder(
-    key: "entrada" | "exportacao" | "ok" | "erro" | "drawings"
+    key: PathConfigKey
   ) {
     try {
       const current = (cfg as any)[key] || "";
@@ -668,6 +669,9 @@ export default function Dashboard() {
           </div>
           <div className="h-8 w-px bg-border mx-1" />
           <Button variant="outline" onClick={() => window.electron?.updater?.checkForUpdates?.()} className="gap-2 border-border hover:bg-muted text-muted-foreground"><RefreshCw className="h-4 w-4" /> Atualizar</Button>
+          <Button variant="outline" onClick={onNavigateToConfig} className="gap-2 border-border hover:bg-muted text-muted-foreground">
+            <Sliders className="h-4 w-4" /> Opções
+          </Button>
           <ThemeToggle />
         </div>
       </div>
@@ -738,7 +742,7 @@ export default function Dashboard() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {PATH_CONFIGS.filter(c => c.key === "ok" || c.key === "erro" || c.key === "drawings").map((config) => (
+                  {PATH_CONFIGS.filter(c => c.key === "ok" || c.key === "erro" || c.key === "drawings" || c.key === "simplificado").map((config) => (
                     <div key={config.key} className="space-y-2">
                       <div className="flex items-center gap-1.5">
                         <Label htmlFor={config.key} className="text-muted-foreground text-xs flex items-center gap-1">

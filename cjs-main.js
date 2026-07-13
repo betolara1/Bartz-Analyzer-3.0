@@ -391,9 +391,98 @@ async function validateXml(fileFullPath, cfg = {}) {
   return payload;
 }
 
+/**
+ * Gera a versão simplificada do XML de pedido:
+ * mantém o documento inteiro, mas dentro de <ITENS_PEDIDO> deixa somente
+ * a linha de cada ITEM pai (sem filhos), com apenas os atributos:
+ * ID, REFERENCIA, ITEM_BASE, LARGURA, ALTURA, PROFUNDIDADE, DESCRICAO, UNIDADE, QUANTIDADE, PRECO_TOTAL.
+ */
+const SIMPLIFIED_KEEP_ATTRS = ["ID", "REFERENCIA", "ITEM_BASE", "LARGURA", "ALTURA", "PROFUNDIDADE", "DESCRICAO", "UNIDADE", "QUANTIDADE", "PRECO_TOTAL"];
+
+function buildSimplifiedXml(txt) {
+  const openMatch = /<ITENS_PEDIDO\b[^>]*>/i.exec(txt);
+  if (!openMatch) return null;
+  const openEnd = openMatch.index + openMatch[0].length;
+
+  const closeMatch = /<\/ITENS_PEDIDO>/i.exec(txt.slice(openEnd));
+  if (!closeMatch) return null;
+  const closeIdx = openEnd + closeMatch.index;
+
+  const inner = txt.slice(openEnd, closeIdx);
+
+  // preservar a indentação da linha do </ITENS_PEDIDO>
+  const closeLineStart = inner.lastIndexOf('\n');
+  const closeIndent = closeLineStart >= 0 && /^\s*$/.test(inner.slice(closeLineStart + 1)) ? inner.slice(closeLineStart + 1) : '';
+
+  // varrer ITEMs de nível 1 (pais), ignorando os aninhados dentro de ESTRUTURA
+  const simplifiedItems = [];
+  const tagRe = /<ITEM\b[^>]*>|<\/ITEM>/gi;
+  let depth = 0;
+  let m;
+  while ((m = tagRe.exec(inner))) {
+    const tag = m[0];
+    if (tag.startsWith('</')) { if (depth > 0) depth--; continue; }
+    const selfClosing = /\/>$/.test(tag);
+
+    if (depth === 0) {
+      // indentação original da linha do ITEM pai
+      const lineStart = inner.lastIndexOf('\n', m.index) + 1;
+      const prefix = inner.slice(lineStart, m.index);
+      const indent = /^\s*$/.test(prefix) ? prefix : '\t\t';
+
+      // filtrar atributos, mantendo apenas os desejados (na ordem definida)
+      const attrs = {};
+      const attrRe = /([A-Za-z0-9_]+)\s*=\s*"([^"]*)"/g;
+      let a;
+      while ((a = attrRe.exec(tag))) attrs[a[1].toUpperCase()] = a[2];
+      const kept = SIMPLIFIED_KEEP_ATTRS
+        .filter((k) => Object.prototype.hasOwnProperty.call(attrs, k))
+        .map((k) => `${k}="${attrs[k]}"`);
+
+      simplifiedItems.push(`${indent}<ITEM ${kept.join(' ')}>\r\n${indent}</ITEM>`);
+    }
+
+    if (!selfClosing) depth++;
+  }
+
+  if (simplifiedItems.length === 0) return null;
+
+  return txt.slice(0, openEnd) + '\r\n' + simplifiedItems.join('\r\n') + '\r\n' + closeIndent + txt.slice(closeIdx);
+}
+
+async function generateSimplifiedXml(fileFullPath, cfg, analysis) {
+  if (!cfg?.simplificado) return; // pasta não configurada — recurso desativado
+  try {
+    const destPath = path.join(cfg.simplificado, path.basename(fileFullPath));
+    // gerar somente na primeira análise: se já existe, não sobrescreve
+    if (await fse.pathExists(destPath)) return;
+
+    const txt = await fsp.readFile(fileFullPath, 'utf8');
+    const simplified = buildSimplifiedXml(txt);
+    if (!simplified) {
+      console.log(`[Simplificado] ${path.basename(fileFullPath)}: sem ITENS_PEDIDO/ITEM — nada gerado.`);
+      return;
+    }
+
+    await fse.ensureDir(cfg.simplificado);
+    await fsp.writeFile(destPath, simplified, 'utf8');
+    console.log(`[Simplificado] Gerado: ${destPath}`);
+
+    if (analysis) {
+      if (!analysis.autoFixes) analysis.autoFixes = [];
+      analysis.autoFixes.push(`XML simplificado gerado na pasta configurada`);
+    }
+  } catch (e) {
+    console.error('[Simplificado] Erro ao gerar XML simplificado:', String((e && e.message) || e));
+  }
+}
+
 async function processOne(fileFullPath, cfg) {
   try {
     const analysis = await validateXml(fileFullPath, cfg);
+
+    // GERAÇÃO DE XML SIMPLIFICADO (somente na primeira análise de cada arquivo)
+    await generateSimplifiedXml(fileFullPath, cfg, analysis);
 
     // AUTO-FIX DUPLADO 37MM (ES08) - AUTOMATIZAÇÃO DE CORREÇÃO DXF
     if (cfg.enableAutoFix && analysis.meta && analysis.meta.es08Matches && analysis.meta.es08Matches.length > 0 && cfg.drawings) {
@@ -507,7 +596,16 @@ ipcMain.handle("settings:load", async () => {
     ok: normalizeWin(saved.ok || ""),
     erro: normalizeWin(saved.erro || ""),
     drawings: normalizeWin(saved.drawings || ""),
-    enableAutoFix: !!saved.enableAutoFix,
+    simplificado: normalizeWin(saved.simplificado || ""),
+    enableAutoFix: saved.enableAutoFix !== undefined ? !!saved.enableAutoFix : true,
+    schedulerEnabled: saved.schedulerEnabled !== undefined ? !!saved.schedulerEnabled : true,
+    schedulerTimes: saved.schedulerTimes || "11:30, 17:30",
+    schedulerDays: saved.schedulerDays || "seg-sex",
+    cleanupEnabled: saved.cleanupEnabled !== undefined ? !!saved.cleanupEnabled : false,
+    cleanupTime: saved.cleanupTime || "17:30",
+    cleanupRetentionDays: saved.cleanupRetentionDays !== undefined ? Number(saved.cleanupRetentionDays) : 0,
+    cleanupCleanOk: saved.cleanupCleanOk !== undefined ? !!saved.cleanupCleanOk : true,
+    cleanupCleanErro: saved.cleanupCleanErro !== undefined ? !!saved.cleanupCleanErro : true,
   };
 });
 
@@ -519,7 +617,16 @@ function sanitizeCfg(obj) {
     ok: normalizeWin(obj?.ok || ""),
     erro: normalizeWin(obj?.erro || ""),
     drawings: normalizeWin(obj?.drawings || ""),
-    enableAutoFix: !!obj?.enableAutoFix,
+    simplificado: normalizeWin(obj?.simplificado || ""),
+    enableAutoFix: obj?.enableAutoFix !== undefined ? !!obj.enableAutoFix : true,
+    schedulerEnabled: obj?.schedulerEnabled !== undefined ? !!obj.schedulerEnabled : true,
+    schedulerTimes: obj?.schedulerTimes || "11:30, 17:30",
+    schedulerDays: obj?.schedulerDays || "seg-sex",
+    cleanupEnabled: obj?.cleanupEnabled !== undefined ? !!obj.cleanupEnabled : false,
+    cleanupTime: obj?.cleanupTime || "17:30",
+    cleanupRetentionDays: obj?.cleanupRetentionDays !== undefined ? Number(obj.cleanupRetentionDays) : 0,
+    cleanupCleanOk: obj?.cleanupCleanOk !== undefined ? !!obj.cleanupCleanOk : true,
+    cleanupCleanErro: obj?.cleanupCleanErro !== undefined ? !!obj.cleanupCleanErro : true,
   };
 }
 
@@ -538,7 +645,7 @@ async function testPaths(obj) {
   for (const k of ["entrada", "exportacao", "ok", "erro"]) {
     res[k] = await checkWrite(payload[k]);
   }
-  for (const k of ["drawings"]) {
+  for (const k of ["drawings", "simplificado"]) {
     res[k] = await checkWrite(payload[k]);
   }
   return res;
@@ -609,6 +716,7 @@ ipcMain.handle("analyzer:start", async (_e, overrideCfg) => {
       erro: normalizeWin(raw.erro),
       enableAutoFix: !!raw.enableAutoFix,
       drawings: normalizeWin(raw.drawings),
+      simplificado: normalizeWin(raw.simplificado),
     };
 
     for (const k of ["entrada", "exportacao", "ok", "erro"]) {
@@ -2708,20 +2816,26 @@ async function saveDailyReport(reportData) {
 }
 
 /**
- * Remove todos os arquivos das pastas configuradas (OK, ERRO, Logs).
+ * Remove todos os arquivos das pastas configuradas (OK, ERRO, Logs) respeitando dias de retenção.
  */
 async function clearTargetFolders() {
   console.log('[Scheduler] ========== INICIANDO LIMPEZA DE PASTAS ==========');
   const cfg = currentCfg || (await loadCfg());
-  const foldersToClear = [cfg.ok, cfg.erro].filter(d => !!d);
+  
+  const foldersToClear = [];
+  if (cfg.cleanupCleanOk) foldersToClear.push(cfg.ok);
+  if (cfg.cleanupCleanErro) foldersToClear.push(cfg.erro);
+  const activeFolders = foldersToClear.filter(d => !!d);
 
-  if (foldersToClear.length === 0) {
-    console.log('[Scheduler] Nenhuma pasta configurada para limpeza.');
-    return { ok: false, message: 'Nenhuma pasta configurada para limpeza.' };
+  if (activeFolders.length === 0) {
+    console.log('[Scheduler] Nenhuma pasta configurada para limpeza ativa.');
+    return { ok: false, message: 'Nenhuma pasta ativa configurada para limpeza.' };
   }
 
   let clearedCount = 0;
-  for (const dir of foldersToClear) {
+  const retentionDays = cfg.cleanupRetentionDays !== undefined ? Number(cfg.cleanupRetentionDays) : 0;
+
+  for (const dir of activeFolders) {
     try {
       if (await fse.pathExists(dir)) {
         const files = await fs.promises.readdir(dir);
@@ -2729,8 +2843,16 @@ async function clearTargetFolders() {
           const fullPath = path.join(dir, file);
           const stats = await fs.promises.stat(fullPath);
           if (stats.isFile()) {
-            await fse.remove(fullPath);
-            clearedCount++;
+            let shouldDelete = true;
+            if (retentionDays > 0) {
+              const fileAgeMs = Date.now() - stats.mtime.getTime();
+              const maxAgeMs = retentionDays * 24 * 60 * 60 * 1000;
+              shouldDelete = fileAgeMs > maxAgeMs;
+            }
+            if (shouldDelete) {
+              await fse.remove(fullPath);
+              clearedCount++;
+            }
           }
         }
         console.log(`[Scheduler] ✓ Pasta limpa: ${dir}`);
@@ -2742,24 +2864,47 @@ async function clearTargetFolders() {
   return { ok: true, clearedCount };
 }
 
+let lastReportTimeStr = "";
+let lastCleanupTimeStr = "";
+
 /**
  * Loop que verifica o horário a cada minuto para gerar o relatório automático e limpar pastas.
  */
 function startAutomaticScheduler() {
-  console.log('[Scheduler] Iniciado. Verificando horários (Relatórios: 11:30/17:30 | Limpeza: 17:30)...');
+  console.log('[Scheduler] Iniciado. Verificação dinâmica configurada.');
 
   setInterval(async () => {
-    const now = new Date();
-    const day = now.getDay(); // 0=Dom, 1=Seg, ..., 6=Sab
-    const hours = now.getHours();
-    const minutes = now.getMinutes();
+    try {
+      const now = new Date();
+      const day = now.getDay(); // 0=Dom, 1=Seg, ..., 6=Sab
+      const hours = now.getHours();
+      const minutes = now.getMinutes();
+      const currentTimeStr = `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 
-    // Apenas Segunda a Sexta
-    if (day >= 1 && day <= 5) {
-      // Relatórios automáticos
-      if ((hours === 11 && minutes === 30) || (hours === 17 && minutes === 30)) {
-        console.log(`[Scheduler] Horário de relatório atingido (${hours}:${minutes}). Executando exportação automática...`);
-        try {
+      const cfg = currentCfg || (await loadCfg());
+
+      let isRightDay = false;
+      const sDays = cfg.schedulerDays || "seg-sex";
+      if (sDays === "seg-sex") {
+        isRightDay = (day >= 1 && day <= 5);
+      } else if (sDays === "seg-sab") {
+        isRightDay = (day >= 1 && day <= 6);
+      } else {
+        isRightDay = true; // "todos"
+      }
+
+      if (!isRightDay) return;
+
+      // 1. Relatório Automático
+      if (cfg.schedulerEnabled) {
+        const times = (cfg.schedulerTimes || "")
+          .split(",")
+          .map(t => t.trim())
+          .filter(t => /^\d{2}:\d{2}$/.test(t));
+        
+        if (times.includes(currentTimeStr) && lastReportTimeStr !== currentTimeStr) {
+          lastReportTimeStr = currentTimeStr;
+          console.log(`[Scheduler] Horário de relatório atingido (${currentTimeStr}). Executando exportação automática...`);
           const reportData = await aggregateTodayLogs();
           if (reportData.rows.length > 0) {
             await saveDailyReport(reportData);
@@ -2767,10 +2912,21 @@ function startAutomaticScheduler() {
           } else {
             console.log(`[Scheduler] Nenhum arquivo processado hoje para exportar.`);
           }
-        } catch (e) {
-          console.error(`[Scheduler] Erro na exportação automática:`, e.message);
         }
       }
+
+      // 2. Limpeza Automática
+      if (cfg.cleanupEnabled) {
+        const cleanTime = (cfg.cleanupTime || "17:30").trim();
+        if (currentTimeStr === cleanTime && lastCleanupTimeStr !== currentTimeStr) {
+          lastCleanupTimeStr = currentTimeStr;
+          console.log(`[Scheduler] Horário de limpeza atingido (${currentTimeStr}). Executando limpeza automática...`);
+          const res = await clearTargetFolders();
+          console.log(`[Scheduler] Limpeza concluída:`, res);
+        }
+      }
+    } catch (e) {
+      console.error(`[Scheduler] Erro no ciclo do agendador automático:`, e.message);
     }
   }, 60000); // 60 segundos
 }
