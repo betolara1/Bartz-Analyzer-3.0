@@ -62,7 +62,8 @@ function toRow(p: any): Row | null {
     autoFixes,
     warnings,
     tags,
-    timestamp: new Date().toLocaleString(),
+    timestamp: p?.timestamp || new Date().toLocaleString(),
+    timestampMs: p?.timestampMs || parseTimestamp(p?.timestamp),
     meta: p?.meta || {},
     initialStatus: status, // Será sobrescrito se já existir no loop do prev
     history: [],
@@ -110,6 +111,39 @@ const normalizeTagForMatch = (t: string) =>
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[\s_]+/g, "");
 
+const parseTimestamp = (timestampStr?: string): number => {
+  if (!timestampStr) return Date.now();
+  const parts = timestampStr.match(/(\d{2})\/(\d{2})\/(\d{4}),?\s+(\d{2}):(\d{2}):(\d{2})/);
+  if (parts) {
+    const [_, day, month, year, hour, minute, second] = parts;
+    const date = new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute), Number(second));
+    if (!isNaN(date.getTime())) return date.getTime();
+  }
+  const dateObj = new Date(timestampStr);
+  return isNaN(dateObj.getTime()) ? Date.now() : dateObj.getTime();
+};
+
+const isWithinTimeRange = (timestampMs?: number, range?: string) => {
+  if (!timestampMs) return true;
+  const now = Date.now();
+  if (range === "1h") {
+    return now - timestampMs <= 60 * 60 * 1000;
+  }
+  if (range === "24h") {
+    return now - timestampMs <= 24 * 60 * 60 * 1000;
+  }
+  if (range === "today") {
+    const fileDate = new Date(timestampMs);
+    const nowDate = new Date();
+    return (
+      fileDate.getDate() === nowDate.getDate() &&
+      fileDate.getMonth() === nowDate.getMonth() &&
+      fileDate.getFullYear() === nowDate.getFullYear()
+    );
+  }
+  return true; // "all"
+};
+
 const getPathIcon = (key: string) => {
   switch (key) {
     case "ok":
@@ -128,7 +162,8 @@ export default function Dashboard() {
   const [rows, setRows] = useState<Row[]>([]);
   const [search, setSearch] = useState("");
   const [filter, setFilter] =
-    useState<"all" | "ok" | "erro" | "muxarabi" | "coringa" | "curvo" | "duplado37mm" | "sem_codigo">("all");
+    useState<"all" | "ok" | "erro" | "muxarabi" | "coringa" | "curvo" | "duplado37mm" | "sem_codigo" | "autofix">("all");
+  const [timeFilter, setTimeFilter] = useState<"all" | "1h" | "today" | "24h">("all");
 
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
@@ -191,7 +226,12 @@ export default function Dashboard() {
           if (Array.isArray(saved) && saved.length > 0) {
             setRows((prev: Row[]) => {
               const have = new Set(prev.map((r) => r.filename));
-              const restored = saved.filter((r: any) => r?.filename && r?.fullpath && !have.has(r.filename));
+              const restored = saved
+                .map((r: any) => ({
+                  ...r,
+                  timestampMs: r.timestampMs || parseTimestamp(r.timestamp),
+                }))
+                .filter((r: any) => r?.filename && r?.fullpath && !have.has(r.filename));
               return [...prev, ...restored];
             });
             toast.info(`${saved.length} análise(s) restaurada(s) da sessão anterior.`);
@@ -302,20 +342,26 @@ export default function Dashboard() {
     return () => { if (saveTimer.current) clearTimeout(saveTimer.current); };
   }, [rows]);
 
+  // Filtro de tempo aplicado para os contadores e tabela de exibição
+  const rowsFilteredByTime = useMemo(() => {
+    return rows.filter((r) => isWithinTimeRange(r.timestampMs, timeFilter));
+  }, [rows, timeFilter]);
+
   // KPIs
   const resumo = useMemo(() => {
-    const ok = rows.filter((r) => r.status === "OK").length;
-    const erro = rows.filter((r) => r.status === "ERRO").length;
-    const mux = rows.filter((r) => (r.tags || []).some(t => normalizeTagForMatch(t).includes("muxarabi"))).length;
-    const cor = rows.filter((r) => (r.tags || []).some(t => normalizeTagForMatch(t).includes("coringa"))).length;
-    const curvo = rows.filter(hasCurvo).length;
-    const dup37 = rows.filter((r) => (r.tags || []).some(t => normalizeTagForMatch(t).includes("duplado"))).length;
-    const semCod = rows.filter((r) => (r.tags || []).some(t => normalizeTagForMatch(t).includes("semcodigo"))).length;
-    return { ok, erro, mux, cor, curvo, dup37, semCod };
-  }, [rows]);
+    const ok = rowsFilteredByTime.filter((r) => r.status === "OK").length;
+    const erro = rowsFilteredByTime.filter((r) => r.status === "ERRO").length;
+    const mux = rowsFilteredByTime.filter((r) => (r.tags || []).some(t => normalizeTagForMatch(t).includes("muxarabi"))).length;
+    const cor = rowsFilteredByTime.filter((r) => (r.tags || []).some(t => normalizeTagForMatch(t).includes("coringa"))).length;
+    const curvo = rowsFilteredByTime.filter(hasCurvo).length;
+    const dup37 = rowsFilteredByTime.filter((r) => (r.tags || []).some(t => normalizeTagForMatch(t).includes("duplado"))).length;
+    const semCod = rowsFilteredByTime.filter((r) => (r.tags || []).some(t => normalizeTagForMatch(t).includes("semcodigo"))).length;
+    const autofix = rowsFilteredByTime.filter((r) => (r.autoFixes || []).length > 0).length;
+    return { ok, erro, mux, cor, curvo, dup37, semCod, autofix };
+  }, [rowsFilteredByTime]);
 
   const kpis = useMemo(() => [
-    { key: "all", title: "Todos", value: rows.length, icon: <Filter className="h-5 w-5" />, color: "#3498DB" },
+    { key: "all", title: "Todos", value: rowsFilteredByTime.length, icon: <Filter className="h-5 w-5" />, color: "#3498DB" },
     { key: "ok", title: "Corretos", value: resumo.ok, icon: <CheckCircle className="h-5 w-5" />, color: "#27AE60" },
     { key: "erro", title: "Inconformidades", value: resumo.erro, icon: <XCircle className="h-5 w-5" />, color: "#E74C3C" },
     { key: "muxarabi", title: "Muxarabi", value: resumo.mux, icon: <Grid3X3 className="h-5 w-5" />, color: "#9B59B6" },
@@ -323,12 +369,24 @@ export default function Dashboard() {
     { key: "duplado37mm", title: "Duplado 37MM", value: resumo.dup37, icon: <AlertTriangle className="h-5 w-5" />, color: "#C0392B" },
     { key: "sem_codigo", title: "Sem Código", value: resumo.semCod, icon: <AlertCircle className="h-5 w-5" />, color: "#E74C3C" },
     { key: "curvo", title: "Curvo", value: resumo.curvo, icon: <Grid3X3 className="h-5 w-5" />, color: "#ee5700ff" },
-  ] as const, [rows.length, resumo]);
+    { key: "autofix", title: "Robô Auto-Fix", value: resumo.autofix, icon: <Zap className="h-5 w-5" />, color: "#1ABC9C" },
+  ] as const, [rowsFilteredByTime.length, resumo]);
 
   const filtered = useMemo(() => {
-    const term = search.toLowerCase();
-    return rows
-      .filter((r) => r.filename.toLowerCase().includes(term))
+    const term = search.toLowerCase().trim();
+    return rowsFilteredByTime
+      .filter((r) => {
+        if (!term) return true;
+        const nameMatch = r.filename.toLowerCase().includes(term);
+        const errorMatch = (r.errors || []).some(e => {
+          const desc = typeof e === "string" ? e : (e?.descricao || "");
+          return desc.toLowerCase().includes(term);
+        });
+        const warningMatch = (r.warnings || []).some(w => String(w).toLowerCase().includes(term));
+        const tagMatch = (r.tags || []).some(t => t.toLowerCase().includes(term));
+        const autoFixMatch = ((r.autoFixes || []).length > 0) && "auto-fix".includes(term);
+        return nameMatch || errorMatch || warningMatch || tagMatch || autoFixMatch;
+      })
       .filter((r) => {
         if (filter === "all") return true;
         if (filter === "ok") return r.status === "OK";
@@ -338,9 +396,10 @@ export default function Dashboard() {
         if (filter === "duplado37mm") return (r.tags || []).some(t => normalizeTagForMatch(t).includes("duplado"));
         if (filter === "sem_codigo") return (r.tags || []).some(t => normalizeTagForMatch(t).includes("semcodigo"));
         if (filter === "curvo") return hasCurvo(r);
+        if (filter === "autofix") return (r.autoFixes || []).length > 0;
         return true;
       });
-  }, [rows, search, filter]);
+  }, [rowsFilteredByTime, search, filter]);
 
   const totalPages = useMemo(() => Math.ceil(filtered.length / itemsPerPage), [filtered.length]);
   const paginatedData = useMemo(() => filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage), [filtered, currentPage]);
@@ -787,7 +846,7 @@ export default function Dashboard() {
 
       {/* KPIs + Tabela */}
       <div className="p-6 space-y-6">
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5 2xl:grid-cols-9 gap-4">
           {kpis.map((k: any) => {
             const isActive = filter === k.key;
             return (
@@ -830,15 +889,41 @@ export default function Dashboard() {
           <div className="flex items-center gap-4">
             <div className="relative group">
               <Input
-                placeholder="Buscar arquivo..."
+                type="text"
+                placeholder="Buscar arquivo, erro, tag..."
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setCurrentPage(1); }}
-                className="pl-9 w-80 bg-muted/50 border-border text-sm focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                className="w-80 bg-muted/50 border-border text-sm focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
+                style={{ paddingLeft: "2.5rem" }}
               />
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" />
+              <Filter 
+                className="absolute left-3 h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" 
+                style={{ top: "50%", transform: "translateY(-50%)" }}
+              />
             </div>
-            <div className="flex items-center gap-2 text-muted-foreground bg-card px-3 py-1.5 rounded-lg border border-border">
-              <Calendar className="h-3.5 w-3.5" /> <span className="text-xs font-medium">Últimas 24h</span>
+            <div className="relative">
+              <select
+                value={timeFilter}
+                onChange={(e) => {
+                  setTimeFilter(e.target.value as "all" | "1h" | "today" | "24h");
+                  setCurrentPage(1);
+                }}
+                className="appearance-none bg-card hover:bg-muted text-muted-foreground text-xs font-medium py-1.5 rounded-lg border border-border focus:outline-none focus:ring-1 focus:ring-primary/20 cursor-pointer transition-all"
+                style={{ paddingLeft: "2.25rem", paddingRight: "2rem" }}
+              >
+                <option value="all">Todas as datas</option>
+                <option value="1h">Última 1 hora</option>
+                <option value="today">Hoje</option>
+                <option value="24h">Últimas 24 horas</option>
+              </select>
+              <Calendar 
+                className="absolute left-2.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" 
+                style={{ top: "50%", transform: "translateY(-50%)" }}
+              />
+              <div 
+                className="absolute right-2.5 pointer-events-none border-l-4 border-r-4 border-t-4 border-transparent border-t-muted-foreground w-0 h-0" 
+                style={{ top: "50%", transform: "translateY(-50%)" }}
+              />
             </div>
           </div>
           <div className="flex items-center gap-3">

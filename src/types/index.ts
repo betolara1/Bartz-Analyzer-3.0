@@ -10,6 +10,7 @@ export interface Row {
   warnings?: string[];
   tags?: string[];
   timestamp?: string;
+  timestampMs?: number;
   meta?: {
     ferragensOnly?: boolean;
     machines?: Array<{ id?: string; name?: string }>;
