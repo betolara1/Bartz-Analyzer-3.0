@@ -2558,85 +2558,50 @@ ipcMain.handle('analyzer:fixFresa37to18', async (_e, dxfFilePath) => {
  * Agrega todos os arquivos processados hoje a partir dos logs gravados em logsProcessed e logsErrors.
  */
 async function aggregateTodayLogs() {
-  return { rows: [] };
-
-  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  const fileGroups = new Map();
-
-  for (const dir of logDirs) {
-    if (!(await fse.pathExists(dir))) continue;
-    const files = await fs.promises.readdir(dir);
-
-    for (const file of files) {
-      if (!file.toLowerCase().endsWith('.json')) continue;
-      const fullPath = path.join(dir, file);
-      try {
-        const stats = await fs.promises.stat(fullPath);
-
-        // Filtra apenas arquivos modificados hoje
-        if (stats.mtime.toISOString().split('T')[0] === todayStr) {
-          const analysis = await fse.readJson(fullPath);
-          const originalFile = analysis.arquivo;
-          const filename = path.basename(originalFile || '');
-          if (!filename) continue;
-
-          if (!fileGroups.has(filename)) fileGroups.set(filename, []);
-          fileGroups.get(filename).push({ analysis, mtime: stats.mtime, originalFile });
-        }
-      } catch (e) {
-        /* ignorar erro de leitura */
+  const rows = [];
+  try {
+    if (await fse.pathExists(HISTORY_FILE)) {
+      const allRows = await fse.readJson(HISTORY_FILE);
+      if (Array.isArray(allRows)) {
+        const d = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const todayStr = `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+        allRows.forEach(r => {
+          if (r.timestamp && r.timestamp.startsWith(todayStr)) {
+            rows.push(r);
+          }
+        });
       }
     }
+  } catch (e) {
+    console.error('[Scheduler] Erro ao ler HISTORY_FILE:', e.message);
   }
-
-  const rows = [];
-  for (const [filename, logs] of fileGroups.entries()) {
-    // Ordenar por mtime crescente (mais antigo primeiro)
-    logs.sort((a, b) => a.mtime - b.mtime);
-
-    const earliest = logs[0];
-    const latest = logs[logs.length - 1];
-
-    // Verificar se o arquivo XML atualmente reside na pasta OK
-    // Isso é importante se o usuário moveu o arquivo manualmente (sem gerar log)
-    let finalXmlFoundInOk = false;
-    if (cfg.ok && await fse.pathExists(path.join(cfg.ok, filename))) {
-      finalXmlFoundInOk = true;
-    }
-
-    const isOK = (latest.analysis.erros || []).length === 0 || finalXmlFoundInOk;
-    let status = isOK ? "OK" : "ERRO";
-    if (!finalXmlFoundInOk && latest.analysis.meta?.ferragensOnly) status = "FERRAGENS-ONLY";
-
-    const isEarlyOK = (earliest.analysis.erros || []).length === 0;
-    let earlyStatus = isEarlyOK ? "OK" : "ERRO";
-    if (earliest.analysis.meta?.ferragensOnly) earlyStatus = "FERRAGENS-ONLY";
-
-    // Mesclar histórico de todas as passagens do dia
-    const combinedHistory = [];
-    logs.forEach(l => {
-      (l.analysis.history || []).forEach(h => {
-        if (!combinedHistory.includes(h)) combinedHistory.push(h);
-      });
-    });
-
-    rows.push({
-      filename,
-      fullpath: latest.originalFile,
-      status,
-      errors: finalXmlFoundInOk ? [] : (latest.analysis.erros || []).map(e => e.descricao || String(e)),
-      autoFixes: (latest.analysis.autoFixes || []),
-      warnings: (latest.analysis.avisos || []),
-      tags: (latest.analysis.tags || []),
-      timestamp: latest.mtime.toLocaleString('pt-BR'),
-      initialStatus: earlyStatus,
-      initialErrors: earlyStatus === "ERRO" ? (earliest.analysis.erros || []).map(e => e.descricao || String(e)) : [],
-      history: combinedHistory
-    });
-  }
-
-  return { rows: rows };
+  return { rows };
 }
+
+const filterTags = (tags) => {
+  if (!tags) return [];
+  const norm = (t) => t.trim().toLowerCase().replace(/\s+/g, '_');
+  const normalizedTags = tags.map(t => norm(t));
+
+  const autofixBases = new Set();
+  normalizedTags.forEach(t => {
+    if (t.endsWith('_autofix')) {
+      autofixBases.add(t.replace(/_autofix$/, ''));
+    } else if (t.endsWith('autofix')) {
+      autofixBases.add(t.replace(/autofix$/, ''));
+    }
+  });
+
+  return tags.filter(t => {
+    const n = norm(t);
+    if (autofixBases.has(n)) return false;
+    if (n.includes('duplado') && Array.from(autofixBases).some(b => b.includes('duplado'))) {
+      return false;
+    }
+    return true;
+  });
+};
 
 /**
  * Salva o relatório diário (JSON e CSV) baseado nos dados fornecidos.
@@ -2645,88 +2610,63 @@ async function aggregateTodayLogs() {
 async function saveDailyReport(reportData) {
   console.log('[Report] ========== INICIANDO GERAÇÃO DE RELATÓRIO ==========');
 
+  const cfg = currentCfg || (await loadCfg());
+
   const now = new Date();
-  const dayStr = now.toLocaleDateString('pt-BR').split('/').reverse().join('-'); // 2026-02-12
-  const timestamp = dayStr;
+  const pad = (n) => String(n).padStart(2, '0');
+  const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`; // YYYY-MM-DD
+  
+  let dateStr = todayStr;
+  if (reportData && reportData.targetDate) {
+    dateStr = reportData.targetDate;
+  }
 
   // Obter pasta de exportação da config
-  let exportFolder = currentCfg?.exportacao || "";
+  let exportFolder = cfg?.exportacao || "";
   if (!exportFolder || !(await fse.pathExists(exportFolder))) {
     exportFolder = path.join(app.getPath("desktop"), "Bartz-Analyzer_Exports");
     await fse.ensureDir(exportFolder);
   }
 
-  const jsonPath = path.join(exportFolder, `Relatorio_${timestamp}.json`);
-  const csvPath = path.join(exportFolder, `Relatorio_${timestamp}.csv`);
+  const csvPath = path.join(exportFolder, `Relatorio_${dateStr}.csv`);
 
-  let existingData = { files: [] };
-  if (await fse.pathExists(jsonPath)) {
-    try {
-      const raw = await fs.promises.readFile(jsonPath, 'utf8');
-      existingData = JSON.parse(raw);
-      if (!Array.isArray(existingData.files)) existingData.files = [];
-    } catch (e) {
-      console.warn('[Report] Erro ao ler JSON existente, recomeçando:', e.message);
-    }
+  let allFiles = Array.isArray(reportData.rows) ? reportData.rows : [];
+  
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+    const parts = dateStr.split('-');
+    const targetDayBR = `${parts[2]}/${parts[1]}/${parts[0]}`; // DD/MM/YYYY
+    allFiles = allFiles.filter(f => f.timestamp && f.timestamp.startsWith(targetDayBR));
   }
 
-  // Mesclar linhas
-  const fileMap = new Map();
-  existingData.files.forEach(f => {
-    if (f.filename) fileMap.set(f.filename, f);
-  });
-
-  if (Array.isArray(reportData.rows)) {
-    reportData.rows.forEach(r => {
-      if (r.filename) {
-        const old = fileMap.get(r.filename);
-        if (old) {
-          r.initialStatus = old.initialStatus || r.initialStatus;
-          r.initialErrors = (old.initialErrors && old.initialErrors.length > 0) ? old.initialErrors : (r.initialErrors || []);
-          const combinedHistory = [...(old.history || [])];
-          (r.history || []).forEach(entry => {
-            if (!combinedHistory.includes(entry)) combinedHistory.push(entry);
-          });
-          r.history = combinedHistory;
-        }
-        fileMap.set(r.filename, r);
-      }
-    });
-  }
-
-  const allFiles = Array.from(fileMap.values());
   const totalFiles = allFiles.length;
   const okFiles = allFiles.filter(f => f.status === "OK").length;
   const errorFiles = allFiles.filter(f => f.status === "ERRO").length;
-  const ferragensFiles = allFiles.filter(f => f.status === "FERRAGENS-ONLY").length;
+  const ferragensFiles = allFiles.filter(f => f.status === "FERRAGENS-ONLY" || f.status === "FERRAGENS").length;
+
+  const normalizeTagForMatch = (t) => 
+    (t || "").toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[\s_]+/g, "");
+
+  const hasCurvo = (r) =>
+    (r.tags || []).includes("curvo") ||
+    (r.warnings || []).some(w => /curvo/i.test(String(w)));
+
+  const muxarabiFiles = allFiles.filter(f => (f.tags || []).some(t => normalizeTagForMatch(t).includes("muxarabi"))).length;
+  const coringaFiles = allFiles.filter(f => (f.tags || []).some(t => normalizeTagForMatch(t).includes("coringa"))).length;
+  const dupladoFiles = allFiles.filter(f => (f.tags || []).some(t => normalizeTagForMatch(t).includes("duplado"))).length;
+  const semCodigoFiles = allFiles.filter(f => (f.tags || []).some(t => normalizeTagForMatch(t).includes("semcodigo"))).length;
+  const curvoFiles = allFiles.filter(hasCurvo).length;
+  const autoFixFiles = allFiles.filter(f => (f.autoFixes || []).length > 0).length;
 
   const formatStatus = (status) => {
     const s = String(status || "").toUpperCase();
-    if (s === "OK") return "🟢 OK";
-    if (s === "ERRO") return "🔴 ERRO";
-    if (s === "FERRAGENS-ONLY") return "🟡 FERRAGENS-ONLY";
+    if (s === "OK") return "OK";
+    if (s === "ERRO") return "ERRO";
+    if (s === "FERRAGENS-ONLY") return "FERRAGENS-ONLY";
     return s;
   };
-
-  // JSON
-  const jsonData = {
-    ultimaExportacao: now.toLocaleString('pt-BR'),
-    summary: {
-      totalFiles,
-      okFiles,
-      errorFiles,
-      successRate: totalFiles > 0 ? ((okFiles / totalFiles) * 100).toFixed(2) + '%' : 'N/A'
-    },
-    files: allFiles,
-    config: {
-      entrada: currentCfg?.entrada || '',
-      ok: currentCfg?.ok || '',
-      erro: currentCfg?.erro || ''
-    }
-  };
-
-  await fs.promises.writeFile(jsonPath, JSON.stringify(jsonData, null, 2), 'utf8');
-  console.log('[Report] ✓ JSON atualizado:', jsonPath);
 
   // CSV
   const csvLines = [];
@@ -2740,7 +2680,7 @@ async function saveDailyReport(reportData) {
       row.filename || '',
       errorsList.join(' | '),
       (row.warnings || []).join(' | '),
-      (row.tags || []).join(', '),
+      filterTags(row.tags || []).join(', '),
       (row.history || []).join(' | '),
       row.timestamp || ''
     ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(';'));
@@ -2750,15 +2690,21 @@ async function saveDailyReport(reportData) {
   csvLines.push(['RESUMO DO RELATÓRIO DO DIA'].map(v => `"${v}"`).join(';'));
   csvLines.push(['Data da Última Exportação', now.toLocaleString('pt-BR')].map(v => `"${v}"`).join(';'));
   csvLines.push(['Total de Arquivos Processados', totalFiles].map(v => `"${v}"`).join(';'));
-  csvLines.push(['Arquivos OK', `🟢 ${okFiles}`].map(v => `"${v}"`).join(';'));
-  csvLines.push(['Arquivos com ERRO', `🔴 ${errorFiles}`].map(v => `"${v}"`).join(';'));
-  csvLines.push(['Arquivos FERRAGENS-ONLY', `🟡 ${ferragensFiles}`].map(v => `"${v}"`).join(';'));
+  csvLines.push(['Arquivos OK (Corretos)', okFiles].map(v => `"${v}"`).join(';'));
+  csvLines.push(['Arquivos com Inconformidades (Erro)', errorFiles].map(v => `"${v}"`).join(';'));
+  csvLines.push(['Arquivos FERRAGENS-ONLY', ferragensFiles].map(v => `"${v}"`).join(';'));
+  csvLines.push(['Arquivos Muxarabi', muxarabiFiles].map(v => `"${v}"`).join(';'));
+  csvLines.push(['Arquivos Cor Coringa', coringaFiles].map(v => `"${v}"`).join(';'));
+  csvLines.push(['Arquivos Duplado 37MM', dupladoFiles].map(v => `"${v}"`).join(';'));
+  csvLines.push(['Arquivos Sem Código', semCodigoFiles].map(v => `"${v}"`).join(';'));
+  csvLines.push(['Arquivos Curvo', curvoFiles].map(v => `"${v}"`).join(';'));
+  csvLines.push(['Arquivos Corrigidos pelo Robô Auto-Fix', autoFixFiles].map(v => `"${v}"`).join(';'));
   csvLines.push(['Taxa de Sucesso', totalFiles > 0 ? `${(((okFiles + ferragensFiles) / totalFiles) * 100).toFixed(2)}%` : 'N/A'].map(v => `"${v}"`).join(';'));
 
-  await fs.promises.writeFile(csvPath, csvLines.join('\n'), 'utf8');
-  console.log('[Report] ✓ CSV atualizado:', csvPath);
+  await fs.promises.writeFile(csvPath, '\ufeff' + csvLines.join('\n'), 'utf8');
+  console.log('[Report] ✓ CSV atualizado com BOM UTF-8:', csvPath);
 
-  return { ok: true, csvPath, jsonPath, filesCount: totalFiles };
+  return { ok: true, csvPath, filesCount: totalFiles };
 }
 
 /**

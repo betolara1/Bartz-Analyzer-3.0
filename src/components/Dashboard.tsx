@@ -97,7 +97,14 @@ function filterTags(tags: string[]): string[] {
     }
   });
 
-  return tags.filter(t => !autofixBases.has(norm(t)));
+  return tags.filter(t => {
+    const n = norm(t);
+    if (autofixBases.has(n)) return false;
+    if (n.includes('duplado') && Array.from(autofixBases).some(b => b.includes('duplado'))) {
+      return false;
+    }
+    return true;
+  });
 }
 
 // helper para “Curvo” (fora do toRow!)
@@ -479,23 +486,33 @@ export default function Dashboard() {
   async function exportReport() {
     const toastId = toast.loading("Exportando relatório...");
     try {
-      const okFiles = rows.filter(r => r.status === "OK").length;
-      const errorFiles = rows.filter(r => r.status === "ERRO").length;
+      const targetRows = rowsFilteredByDay;
+      const okFiles = targetRows.filter(r => r.status === "OK").length;
+      const errorFiles = targetRows.filter(r => r.status === "ERRO").length;
+
+      const d = new Date();
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const todayStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      const targetDate = selectedDay ? selectedDay : `Completo_${todayStr}`;
 
       const reportData = {
-        rows,
-        totalFiles: rows.length,
+        rows: targetRows,
+        totalFiles: targetRows.length,
         okFiles,
-        errorFiles
+        errorFiles,
+        targetDate
       };
 
       const result = await (window as any).electron?.analyzer?.exportReport?.(reportData);
 
       if (result?.ok) {
         toast.dismiss(toastId);
-        toast.success(`Relatório exportado com sucesso!\n${result.filesCount} arquivo(s) processado(s)`, {
+        const label = selectedDay 
+          ? selectedDay.split('-').reverse().join('-') 
+          : `Completo_${todayStr.split('-').reverse().join('-')}`;
+        toast.success(`Relatório exportado com sucesso!\n${result.filesCount || targetRows.length} arquivo(s) processado(s)`, {
           duration: 5000,
-          description: `Arquivo: Relatorio_${new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')}`
+          description: `Arquivo: Relatorio_${label}`
         });
       } else {
         toast.dismiss(toastId);
@@ -629,7 +646,12 @@ export default function Dashboard() {
         <div className="flex items-center gap-3">
           <div className="h-8 w-8 bg-primary rounded flex items-center justify-center text-primary-foreground font-bold shadow-sm">B</div>
           <div>
-            <div className="text-lg font-semibold">Bartz Verificador XML</div>
+            <div className="text-lg font-semibold flex items-center gap-2">
+              Bartz Verificador XML
+              <span className="text-xs font-normal text-muted-foreground bg-muted border border-border px-2 py-0.5 rounded-full">
+                v4.6.0
+              </span>
+            </div>
             {watchRoot && <div className="text-xs text-muted-foreground">Monitorando: {watchRoot}</div>}
           </div>
         </div>

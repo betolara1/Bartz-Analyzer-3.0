@@ -1,6 +1,7 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  color-scheme: light;
   --font-size: 14px;
   --background: #ffffff;
   --foreground: oklch(0.145 0 0);
@@ -42,6 +43,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   /* Bartz Analyzer Dark Theme */
   --background: #111111;
   --foreground: #FFFFFF;
@@ -226,4 +228,10 @@ html {
 
 .dark ::-webkit-scrollbar-thumb:hover {
   background: #404040;
+}
+
+/* Forçar color-scheme nos elementos nativos de input e select no tema escuro */
+.dark select,
+.dark input {
+  color-scheme: dark;
 }
