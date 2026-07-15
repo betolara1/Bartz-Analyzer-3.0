@@ -11,6 +11,7 @@ declare global {
         openInFolder: (fullOrBasePath: string) => Promise<boolean>;
         reprocessOne: (fullOrBasePath: string) => Promise<boolean>;
         openDrawing?: (drawingCode: string) => Promise<{ ok: boolean; path?: string; message?: string }>;
+        openDrawingFolder?: (drawingCode: string) => Promise<{ ok: boolean; path?: string; message?: string }>;
         openMuxarabiDrawing?: (sizeCode: string) => Promise<{ ok: boolean; path?: string; message?: string }>;
         injectMuxarabi?: (drawingCode: string, sizeCode: string, thickness?: string) => Promise<{ ok: boolean; path?: string; message?: string; injectedCount?: number; totalInTemplate?: number; pieceDimensions?: string; thickness?: string; layer?: string }>;
         loadHistory?: () => Promise<any[]>;

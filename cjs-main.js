@@ -1994,6 +1994,39 @@ ipcMain.handle('analyzer:openDrawing', async (_e, arg) => {
   }
 });
 
+/** ================== IPC: OPEN DRAWING FOLDER ================== **/
+ipcMain.handle('analyzer:openDrawingFolder', async (_e, arg) => {
+  try {
+    const drawingCode = (typeof arg === 'string') ? arg : (arg?.drawingCode || '');
+    if (!drawingCode) {
+      return { ok: false, message: "Código de desenho vazio ou inválido." };
+    }
+    const cfg = currentCfg || (await loadCfg()) || {};
+    const dxfFolderPath = cfg?.drawings;
+    
+    if (!dxfFolderPath) {
+      return { ok: false, message: "A pasta de desenhos não está configurada nas preferências." };
+    }
+
+    const folderExists = await fse.pathExists(dxfFolderPath);
+    if (!folderExists) {
+      return { ok: false, message: `Pasta de desenhos não encontrada: ${dxfFolderPath}` };
+    }
+
+    const exactFilename = `${drawingCode.toLowerCase()}.dxf`;
+    const fullPath = await findFileRecursive(dxfFolderPath, exactFilename);
+
+    if (!fullPath) {
+      return { ok: false, message: `Desenho "${exactFilename}" não encontrado na pasta de desenhos ou subpastas.` };
+    }
+    
+    shell.showItemInFolder(fullPath);
+    return { ok: true, path: fullPath };
+  } catch (e) {
+    return { ok: false, message: String(e && e.message || e) };
+  }
+});
+
 /** ================== IPC: OPEN MUXARABI DRAWING FILE ================== **/
 function parseDxfEntities(dxfContent) {
   const lines = dxfContent.split(/\r?\n/);

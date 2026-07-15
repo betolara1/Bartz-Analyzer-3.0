@@ -1,5 +1,5 @@
 import React from "react";
-import { Layers, ChevronDown, FileText, Wand2 } from "lucide-react";
+import { Layers, ChevronDown, FileText, Wand2, FolderOpen } from "lucide-react";
 import { toast } from "sonner";
 import { Row } from "../../types";
 
@@ -27,6 +27,26 @@ export function MuxarabiSection({ isOpen, onToggle, data }: MuxarabiSectionProps
       }
     } catch (error: any) {
       toast.error(`Erro ao abrir desenho: ${error.message || error}`);
+    } finally {
+      toast.dismiss(id);
+    }
+  };
+
+  const handleOpenDrawingFolder = async (drawingCode: string) => {
+    if (!drawingCode) {
+      toast.error("Código de desenho inválido.");
+      return;
+    }
+    const id = toast.loading(`Buscando e localizando pasta do desenho ${drawingCode}...`);
+    try {
+      const res = await (window as any).electron?.analyzer?.openDrawingFolder?.(drawingCode);
+      if (res?.ok) {
+        toast.success(`Pasta do desenho ${drawingCode} aberta com sucesso!`);
+      } else {
+        toast.error(`Não foi possível abrir a pasta do desenho: ${res?.message || "Erro desconhecido."}`);
+      }
+    } catch (error: any) {
+      toast.error(`Erro ao abrir pasta: ${error.message || error}`);
     } finally {
       toast.dismiss(id);
     }
@@ -133,6 +153,15 @@ export function MuxarabiSection({ isOpen, onToggle, data }: MuxarabiSectionProps
                             >
                               <FileText className="h-3.5 w-3.5" />
                               Abrir Desenho
+                            </button>
+                            <button
+                              disabled={!item.desenho}
+                              onClick={() => handleOpenDrawingFolder(item.desenho)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/20 active:scale-[0.97] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                              title="Abrir pasta do desenho"
+                            >
+                              <FolderOpen className="h-3.5 w-3.5" />
+                              Abrir Pasta
                             </button>
                             <button
                               disabled={!sizeCode}

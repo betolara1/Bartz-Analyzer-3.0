@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.on('analyzer:event', (_e, data) => cb?.(data));
     },
     openDrawing: (drawingCode) => ipcRenderer.invoke('analyzer:openDrawing', { drawingCode }),
+    openDrawingFolder: (drawingCode) => ipcRenderer.invoke('analyzer:openDrawingFolder', { drawingCode }),
     openMuxarabiDrawing: (sizeCode) => ipcRenderer.invoke('analyzer:openMuxarabiDrawing', { sizeCode })
   },
   settings: {

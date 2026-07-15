@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('electron', {
     replaceItemDescription: (filePath, ids, newDescription, desenho) => ipcRenderer.invoke('analyzer:replaceItemDescription', { filePath, ids, newDescription, desenho }),
     findDrawingFile: (drawingCode, xmlFilePath) => ipcRenderer.invoke('analyzer:findDrawingFile', { drawingCode, xmlFilePath }),
     openDrawing: (drawingCode) => ipcRenderer.invoke('analyzer:openDrawing', { drawingCode }),
+    openDrawingFolder: (drawingCode) => ipcRenderer.invoke('analyzer:openDrawingFolder', { drawingCode }),
     openMuxarabiDrawing: (sizeCode) => ipcRenderer.invoke('analyzer:openMuxarabiDrawing', { sizeCode }),
     injectMuxarabi: (drawingCode, sizeCode, thickness) => ipcRenderer.invoke('analyzer:injectMuxarabi', { drawingCode, sizeCode, thickness }),
     fixFresa37to18: (dxfFilePath) => ipcRenderer.invoke('analyzer:fixFresa37to18', dxfFilePath),
