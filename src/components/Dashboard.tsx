@@ -13,7 +13,7 @@ import {
   Play, Pause, RefreshCw, Calendar, Save,
   AlertTriangle, Eye, FolderOpen, BarChart3, AlertCircle, Download, Check,
   ArrowRightLeft, ListTodo, FileText, CheckCircle2, TrendingUp, Activity, Send,
-  CircleHelp, Sliders, Search
+  CircleHelp, Sliders, Search, FileSearch, Loader2
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -234,16 +234,19 @@ export default function Dashboard({ onNavigateToConfig }: { onNavigateToConfig?:
   const [searchXmlResults, setSearchXmlResults] = useState<{ name: string; fullPath: string }[]>([]);
   const [selectedXmlPath, setSelectedXmlPath] = useState("");
   const [copyingXml, setCopyingXml] = useState(false);
+  const [searchingXml, setSearchingXml] = useState(false);
 
   useEffect(() => {
     const trimmed = searchXmlTerm.trim();
     if (!trimmed) {
       setSearchXmlResults([]);
       setSelectedXmlPath("");
+      setSearchingXml(false);
       return;
     }
 
     let active = true;
+    setSearchingXml(true);
 
     const delayDebounce = setTimeout(async () => {
       try {
@@ -264,6 +267,8 @@ export default function Dashboard({ onNavigateToConfig }: { onNavigateToConfig?:
         if (active) {
           toast.error("Erro ao comunicar com o buscador.", { description: String(e?.message || e) });
         }
+      } finally {
+        if (active) setSearchingXml(false);
       }
     }, 400);
 
@@ -292,6 +297,90 @@ export default function Dashboard({ onNavigateToConfig }: { onNavigateToConfig?:
     } finally {
       setCopyingXml(false);
       toast.dismiss(id);
+    }
+  };
+
+  // Busca de Desenhos (DXF) na Pasta de Desenhos configurada
+  const [searchDrawingTerm, setSearchDrawingTerm] = useState("");
+  const [searchDrawingResults, setSearchDrawingResults] = useState<{ name: string; fullPath: string }[]>([]);
+  const [selectedDrawingPath, setSelectedDrawingPath] = useState("");
+  const [openingDrawing, setOpeningDrawing] = useState(false);
+  const [locatingDrawing, setLocatingDrawing] = useState(false);
+  const [searchingDrawings, setSearchingDrawings] = useState(false);
+
+  useEffect(() => {
+    const trimmed = searchDrawingTerm.trim();
+    if (!trimmed) {
+      setSearchDrawingResults([]);
+      setSelectedDrawingPath("");
+      setSearchingDrawings(false);
+      return;
+    }
+
+    let active = true;
+    setSearchingDrawings(true);
+
+    const delayDebounce = setTimeout(async () => {
+      try {
+        const res = await window.electron?.analyzer?.searchDrawingFiles?.(trimmed);
+        if (!active) return;
+
+        if (res?.ok && res.results) {
+          setSearchDrawingResults(res.results);
+          setSelectedDrawingPath("");
+        } else {
+          setSearchDrawingResults([]);
+          setSelectedDrawingPath("");
+          if (res?.message) {
+            toast.error(`Erro na busca de desenhos: ${res.message}`);
+          }
+        }
+      } catch (e: any) {
+        if (active) {
+          toast.error("Erro ao comunicar com o buscador.", { description: String(e?.message || e) });
+        }
+      } finally {
+        if (active) setSearchingDrawings(false);
+      }
+    }, 400);
+
+    return () => {
+      active = false;
+      clearTimeout(delayDebounce);
+    };
+  }, [searchDrawingTerm]);
+
+  const handleOpenDrawingFromSearch = async () => {
+    if (!selectedDrawingPath) return;
+    setOpeningDrawing(true);
+    const id = toast.loading("Abrindo desenho...");
+    try {
+      const res = await window.electron?.analyzer?.openDrawingByPath?.(selectedDrawingPath);
+      if (res?.ok) {
+        toast.success("Desenho aberto com sucesso!");
+      } else {
+        toast.error(`Falha ao abrir desenho: ${res?.message || "Erro desconhecido."}`);
+      }
+    } catch (error: any) {
+      toast.error("Erro ao abrir desenho.", { description: String(error?.message || error) });
+    } finally {
+      setOpeningDrawing(false);
+      toast.dismiss(id);
+    }
+  };
+
+  const handleShowDrawingInFolder = async () => {
+    if (!selectedDrawingPath) return;
+    setLocatingDrawing(true);
+    try {
+      const res = await window.electron?.analyzer?.showDrawingInFolder?.(selectedDrawingPath);
+      if (!res?.ok) {
+        toast.error(`Não foi possível localizar o arquivo: ${res?.message || "Erro desconhecido."}`);
+      }
+    } catch (error: any) {
+      toast.error("Erro ao abrir local do arquivo.", { description: String(error?.message || error) });
+    } finally {
+      setLocatingDrawing(false);
     }
   };
 
@@ -749,56 +838,135 @@ export default function Dashboard({ onNavigateToConfig }: { onNavigateToConfig?:
         </div>
       </div>
 
-      {/* Sistema de Busca e Cópia de XML */}
+      {/* Sistema de Busca e Cópia de XML + Busca de Desenhos */}
       <div className="px-6 mt-4">
-        <div className="bg-card rounded-xl border border-border p-4 shadow-sm flex flex-col gap-3">
-          <div className="flex items-center gap-2">
-            <Search className="h-4.5 w-4.5 text-[#F1C40F]" />
-            <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pesquisa e Importação de XML</h4>
-          </div>
-          <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2">
-            <div className="relative flex-1 group">
-              <Input
-                type="text"
-                placeholder="Digite o nome do arquivo XML..."
-                value={searchXmlTerm}
-                onChange={(e) => setSearchXmlTerm(e.target.value)}
-                className="w-full bg-muted/50 border-border text-xs focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-medium h-9"
-                style={{ paddingLeft: "2.5rem" }}
-              />
-              <Search 
-                className="absolute left-3 h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors" 
-                style={{ top: "50%", transform: "translateY(-50%)" }}
-              />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-card rounded-xl border border-border p-4 shadow-sm flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <Search className="h-4.5 w-4.5 text-[#F1C40F]" />
+              <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pesquisa e Importação de XML</h4>
             </div>
-            
-            <select
-              value={selectedXmlPath}
-              onChange={(e) => setSelectedXmlPath(e.target.value)}
-              className="flex-1 md:flex-none md:w-80 bg-muted hover:bg-muted/80 text-foreground text-xs py-2 px-3 rounded-lg border border-border focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all select-none font-medium h-9"
-              disabled={searchXmlResults.length === 0}
-            >
-              {searchXmlResults.length === 0 ? (
-                <option value="">Nenhum resultado encontrado</option>
-              ) : (
-                <>
-                  <option value="">Selecione um arquivo ({searchXmlResults.length} encontrados)...</option>
-                  {searchXmlResults.map((res, index) => (
-                    <option key={index} value={res.fullPath}>
-                      {res.name}
-                    </option>
-                  ))}
-                </>
-              )}
-            </select>
+            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2">
+              <div className="relative flex-1 group">
+                <Input
+                  type="text"
+                  placeholder="Digite o nome do arquivo XML..."
+                  value={searchXmlTerm}
+                  onChange={(e) => setSearchXmlTerm(e.target.value)}
+                  className="w-full bg-muted/50 border-border text-xs focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-medium h-9"
+                  style={{ paddingLeft: "2.5rem" }}
+                />
+                <Search
+                  className="absolute left-3 h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors"
+                  style={{ top: "50%", transform: "translateY(-50%)" }}
+                />
+                {searchingXml && (
+                  <Loader2
+                    className="absolute right-3 h-3.5 w-3.5 text-primary animate-spin"
+                    style={{ top: "50%", transform: "translateY(-50%)" }}
+                  />
+                )}
+              </div>
 
-            <Button
-              onClick={handleImportXml}
-              disabled={!selectedXmlPath || copyingXml}
-              className="bg-primary text-primary-foreground text-xs font-bold uppercase py-2 px-4 rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 h-9"
-            >
-              {copyingXml ? "Importando..." : "Importar"}
-            </Button>
+              <select
+                value={selectedXmlPath}
+                onChange={(e) => setSelectedXmlPath(e.target.value)}
+                className="flex-1 md:flex-none md:w-80 bg-muted hover:bg-muted/80 text-foreground text-xs py-2 px-3 rounded-lg border border-border focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all select-none font-medium h-9"
+                disabled={searchingXml || searchXmlResults.length === 0}
+              >
+                {searchingXml ? (
+                  <option value="">Buscando...</option>
+                ) : searchXmlResults.length === 0 ? (
+                  <option value="">Nenhum resultado encontrado</option>
+                ) : (
+                  <>
+                    <option value="">Selecione um arquivo ({searchXmlResults.length} encontrados)...</option>
+                    {searchXmlResults.map((res, index) => (
+                      <option key={index} value={res.fullPath}>
+                        {res.name}
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+
+              <Button
+                onClick={handleImportXml}
+                disabled={!selectedXmlPath || copyingXml}
+                className="bg-primary text-primary-foreground text-xs font-bold uppercase py-2 px-4 rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 h-9"
+              >
+                {copyingXml ? "Importando..." : "Importar"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="bg-card rounded-xl border border-border p-4 shadow-sm flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <FileSearch className="h-4.5 w-4.5 text-[#F1C40F]" />
+              <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Pesquisa de Desenhos</h4>
+            </div>
+            <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2">
+              <div className="relative flex-1 group">
+                <Input
+                  type="text"
+                  placeholder="Digite o nome do desenho..."
+                  value={searchDrawingTerm}
+                  onChange={(e) => setSearchDrawingTerm(e.target.value)}
+                  className="w-full bg-muted/50 border-border text-xs focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all font-medium h-9"
+                  style={{ paddingLeft: "2.5rem" }}
+                />
+                <FileSearch
+                  className="absolute left-3 h-3.5 w-3.5 text-muted-foreground group-focus-within:text-primary transition-colors"
+                  style={{ top: "50%", transform: "translateY(-50%)" }}
+                />
+                {searchingDrawings && (
+                  <Loader2
+                    className="absolute right-3 h-3.5 w-3.5 text-primary animate-spin"
+                    style={{ top: "50%", transform: "translateY(-50%)" }}
+                  />
+                )}
+              </div>
+
+              <select
+                value={selectedDrawingPath}
+                onChange={(e) => setSelectedDrawingPath(e.target.value)}
+                className="flex-1 md:flex-none md:w-64 bg-muted hover:bg-muted/80 text-foreground text-xs py-2 px-3 rounded-lg border border-border focus:outline-none focus:ring-1 focus:ring-primary/20 transition-all select-none font-medium h-9"
+                disabled={searchingDrawings || searchDrawingResults.length === 0}
+              >
+                {searchingDrawings ? (
+                  <option value="">Buscando...</option>
+                ) : searchDrawingResults.length === 0 ? (
+                  <option value="">Nenhum resultado encontrado</option>
+                ) : (
+                  <>
+                    <option value="">Selecione um desenho ({searchDrawingResults.length} encontrados)...</option>
+                    {searchDrawingResults.map((res, index) => (
+                      <option key={index} value={res.fullPath}>
+                        {res.name}
+                      </option>
+                    ))}
+                  </>
+                )}
+              </select>
+
+              <Button
+                onClick={handleShowDrawingInFolder}
+                disabled={!selectedDrawingPath || locatingDrawing}
+                variant="outline"
+                className="text-xs font-bold uppercase py-2 px-3 rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 h-9 gap-1.5"
+                title="Abrir local do arquivo"
+              >
+                <FolderOpen className="h-3.5 w-3.5" />
+              </Button>
+
+              <Button
+                onClick={handleOpenDrawingFromSearch}
+                disabled={!selectedDrawingPath || openingDrawing}
+                className="bg-primary text-primary-foreground text-xs font-bold uppercase py-2 px-4 rounded-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 h-9"
+              >
+                {openingDrawing ? "Abrindo..." : "Abrir"}
+              </Button>
+            </div>
           </div>
         </div>
       </div>

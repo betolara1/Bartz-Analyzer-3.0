@@ -686,6 +686,94 @@ async function doFixFresa37to18(dxfFilePath) {
   }
 }
 
+/** ================== IPC: BUSCA DE ARQUIVOS DE DESENHO (DXF) ================== **/
+ipcMain.handle('analyzer:searchDrawingFiles', async (_e, { searchTerm }) => {
+  try {
+    const cfg = state.currentCfg || (await loadCfg()) || {};
+    const drawingsFolder = cfg?.drawings;
+    if (!drawingsFolder) {
+      return { ok: false, message: "A pasta de desenhos não está configurada." };
+    }
+    const folderExists = await fse.pathExists(drawingsFolder);
+    if (!folderExists) {
+      return { ok: false, message: `Pasta de desenhos não encontrada: ${drawingsFolder}` };
+    }
+
+    // Validar se a pasta raiz é legível
+    try {
+      await fse.readdir(drawingsFolder);
+    } catch (e) {
+      return { ok: false, message: `Sem permissão de leitura na pasta de desenhos: ${e.message}` };
+    }
+
+    const results = [];
+    const term = String(searchTerm || '').toLowerCase().trim();
+    if (!term) {
+      return { ok: true, results: [] };
+    }
+
+    // Função interna recursiva para buscar arquivos .dxf correspondentes
+    async function scanDir(directory) {
+      if (results.length >= 100) return;
+      let items;
+      try {
+        items = await fse.readdir(directory, { withFileTypes: true });
+      } catch (e) {
+        return; // Ignora erros de leitura de subpastas individuais
+      }
+
+      for (const item of items) {
+        if (results.length >= 100) return;
+        const full = path.join(directory, item.name);
+        if (item.isDirectory()) {
+          await scanDir(full);
+        } else if (item.isFile()) {
+          if (item.name.toLowerCase().endsWith('.dxf') && item.name.toLowerCase().includes(term)) {
+            results.push({
+              name: item.name,
+              fullPath: full
+            });
+          }
+        }
+      }
+    }
+
+    await scanDir(drawingsFolder);
+    return { ok: true, results };
+  } catch (e) {
+    return { ok: false, message: String(e && e.message || e) };
+  }
+});
+
+/** ================== IPC: ABRIR DESENHO PELO CAMINHO COMPLETO ================== **/
+ipcMain.handle('analyzer:openDrawingByPath', async (_e, fullPath) => {
+  try {
+    if (!fullPath) return { ok: false, message: "Caminho do arquivo não informado." };
+    const exists = await fse.pathExists(fullPath);
+    if (!exists) return { ok: false, message: "Arquivo não encontrado (pode ter sido movido ou renomeado)." };
+    const errorMsg = await shell.openPath(fullPath);
+    if (errorMsg) {
+      return { ok: false, message: `Erro ao abrir o arquivo: ${errorMsg}` };
+    }
+    return { ok: true, path: fullPath };
+  } catch (e) {
+    return { ok: false, message: String(e && e.message || e) };
+  }
+});
+
+/** ================== IPC: MOSTRAR DESENHO NA PASTA (CAMINHO COMPLETO) ================== **/
+ipcMain.handle('analyzer:showDrawingInFolder', async (_e, fullPath) => {
+  try {
+    if (!fullPath) return { ok: false, message: "Caminho do arquivo não informado." };
+    const exists = await fse.pathExists(fullPath);
+    if (!exists) return { ok: false, message: "Arquivo não encontrado (pode ter sido movido ou renomeado)." };
+    shell.showItemInFolder(fullPath);
+    return { ok: true, path: fullPath };
+  } catch (e) {
+    return { ok: false, message: String(e && e.message || e) };
+  }
+});
+
 /** ================== IPC: FIND DRAWING FILE ================== **/
 ipcMain.handle('analyzer:findDrawingFile', async (_e, obj) => {
   try {
