@@ -858,7 +858,7 @@ export default function Dashboard({ onNavigateToConfig }: { onNavigateToConfig?:
             <div className="text-lg font-semibold flex items-center gap-2">
               Bartz Verificador XML
               <span className="text-xs font-normal text-muted-foreground bg-muted border border-border px-2 py-0.5 rounded-full">
-                v5.11.0
+                v5.11.1
               </span>
             </div>
             {watchRoot && <div className="text-xs text-muted-foreground">Monitorando: {watchRoot}</div>}

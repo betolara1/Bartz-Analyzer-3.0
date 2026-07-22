@@ -792,16 +792,10 @@ async function copyDrawingToMirror(fullPath) {
     if (!exists) return { ok: false, message: 'Arquivo não encontrado (pode ter sido movido ou renomeado).' };
 
     const resolvedFile = path.resolve(fullPath);
-    let relative = path.basename(resolvedFile);
-    const drawingsRoot = cfg?.drawings;
-    if (drawingsRoot) {
-      const rel = path.relative(path.resolve(drawingsRoot), resolvedFile);
-      // só usa o caminho relativo se o arquivo realmente estiver dentro da Pasta de Desenhos configurada
-      if (rel && !rel.startsWith('..') && !path.isAbsolute(rel)) relative = rel;
-    }
+    const fileName = path.basename(resolvedFile);
 
-    const destPath = path.join(mirrorRoot, relative);
-    await fse.ensureDir(path.dirname(destPath));
+    const destPath = path.join(mirrorRoot, fileName);
+    await fse.ensureDir(mirrorRoot);
     await fse.copy(resolvedFile, destPath, { overwrite: true });
     console.log(`[Mirror] Desenho copiado: ${resolvedFile} -> ${destPath}`);
     return { ok: true, destPath };
