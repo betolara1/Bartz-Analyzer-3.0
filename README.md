@@ -100,7 +100,7 @@ graph TD
 📦 Bartz-Analyzer
  ├── 🖥️ cjs-main.js          # Arquivo de entrada do processo principal (Main Process)
  ├── 🖥️ preload.js           # Ponte de segurança IPC entre Main e Renderer
- ├── 🖥️ electron/            # Módulos do Processo Principal (Watcher, File System, IPC, APIs)
+ ├── 🖥️ main/                # Módulos do Processo Principal (Watcher, File System, IPC, APIs)
  ├── 📂 Muxarabi/            # Biblioteca de desenhos de Muxarabi (.dxf) por dimensões
  ├── 🎨 src/                 # Processo de Renderização (Interface React + Vite)
  │    ├── 🧩 components/     # Componentes de UI Modulares (Radix UI, Lucide)
@@ -110,8 +110,8 @@ graph TD
  │    ├── 🛠️ lib/            # Utilitários (xml-logic, tailwind-merge, etc)
  │    └── 🏷️ types/          # Definições de tipos globais TypeScript
  ├── 🧪 tests/               # Testes unitários da lógica de validação do XML
- ├── 📜 docs/                # Documentação complementar, esquemas e imagens
- └── 🐳 Dockerfile           # Configuração de containerização para ambiente de testes/build
+ ├── 🐳 Dockerfile           # Configuração de containerização para ambiente de testes/build
+ └── 🐳 docker-compose.yml   # Orquestração do container de testes/build
 ```
 
 ---
