@@ -138,7 +138,7 @@ async function processOne(fileFullPath, cfg) {
           if (res.ok) {
             fixedCount++;
             if (!analysis.autoFixes) analysis.autoFixes = [];
-            analysis.autoFixes.push(`DXF: corrigido 37mm para 18mm no arquivo ${match.desenho}`);
+            analysis.autoFixes.push(`DXF: corrigido duplado (37mm/31mm) no arquivo ${match.desenho}`);
 
             // Desenho foi alterado pelo robô — replicar na pasta de cópia, se configurada
             const mirrorRes = await copyDrawingToMirror(fullPath);
@@ -148,7 +148,7 @@ async function processOne(fileFullPath, cfg) {
           } else if (res.message === 'Nenhuma alteração foi necessária') {
             fixedCount++;
             if (!analysis.autoFixes) analysis.autoFixes = [];
-            analysis.autoFixes.push(`DXF: já estava correto (18mm) no arquivo ${match.desenho}`);
+            analysis.autoFixes.push(`DXF: já estava correto no arquivo ${match.desenho}`);
           }
         }
       }

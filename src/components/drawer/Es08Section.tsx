@@ -23,10 +23,12 @@ interface Es08SectionProps {
 
 function drawingNeedsFix(info: any): boolean {
   if (!info) return false;
-  const isPanel18 = Math.abs(parseFloat(info.panelInfo?.dimension || '0')) === 18;
-  const noFresa37 = (info.fresaInfo?.count37 || 0) === 0;
-  const noUsinagem37 = (info.fresaInfo?.usinagemCount37 || 0) === 0;
-  return !(isPanel18 && noFresa37 && noUsinagem37);
+  const dim = Math.abs(parseFloat(info.panelInfo?.dimension || '0'));
+  const isPanelOk = dim === 18 || dim === 15;
+  const count37 = (info.fresaInfo?.count37 || 0) + (info.fresaInfo?.usinagemCount37 || 0);
+  const count31 = (info.fresaInfo?.count31 || 0) + (info.fresaInfo?.usinagemCount31 || 0);
+  const noDuplado = count37 === 0 && count31 === 0;
+  return !(isPanelOk && noDuplado);
 }
 
 export function Es08Section({
@@ -124,7 +126,7 @@ export function Es08Section({
             <Zap className="h-4 w-4" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-foreground tracking-tight leading-none">Itens ES08 - Duplado 37MM</h3>
+            <h3 className="text-sm font-bold text-foreground tracking-tight leading-none">Itens ES08 - Duplado (37MM / 31MM)</h3>
             <p className="text-[10px] dark:text-rose-300/60 text-muted-foreground font-medium uppercase tracking-widest mt-1">
               {matches.length} componente(s) detectado(s)
             </p>
@@ -232,7 +234,7 @@ export function Es08Section({
                             disabled={!needsFix || isFixing}
                             onClick={() => onFix(drawing)}
                             className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-rose-600 hover:bg-rose-500 text-white active:scale-[0.97] transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-rose-500/10 disabled:text-rose-400 disabled:border disabled:border-rose-500/20"
-                            title={needsFix ? "Corrigir fresa/usinagem/painel 37mm → 18mm" : "Nenhuma correção necessária"}
+                            title={needsFix ? "Corrigir fresa/usinagem/painel (37mm → 18mm / 31mm → 15mm)" : "Nenhuma correção necessária"}
                           >
                             {isFixing ? (
                               <RefreshCw className="h-3.5 w-3.5 animate-spin" />
